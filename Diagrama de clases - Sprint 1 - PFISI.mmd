@@ -1,0 +1,309 @@
+%% ============================================================================
+%% DIAGRAMA DE CLASES — Plataforma VOTAR
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09
+%% ============================================================================
+%% CAMBIOS SPRINT 1:
+%% - Categoria: asociación cambiada de Boleta a Eleccion (relación directa)
+%% - Lista: asociación cambiada de Boleta a Eleccion (relación directa)
+%% - Decisión tomada por el equipo en consulta (16/06/2026)
+%% ============================================================================
+
+classDiagram
+
+    %% ── Value Objects (tipado criptográfico) ─────────────────────────────
+    class Hash {
+        <<value object>>
+        -String valor
+        +validarFormato() boolean
+        +toHex() String
+        +equals(other Hash) boolean
+    }
+
+    class Address {
+        <<value object>>
+        -String valor
+        +validarFormato() boolean
+        +equals(other Address) boolean
+    }
+
+    class ClavePublica {
+        <<value object>>
+        -String valor
+        +validarFormatoECC() boolean
+    }
+
+    class MerkleProof {
+        <<value object>>
+        -String valor
+        +verificarConRaiz(root Hash) boolean
+    }
+
+    class Nullifier {
+        <<value object>>
+        -Hash valor
+        +derivarDe(clavePublica ClavePublica, idEleccion int) Nullifier
+    }
+
+    %% ── Núcleo del comicio ───────────────────────────────────────────────
+    class Eleccion {
+        -int idEleccion
+        -String nombre
+        -String descripcion
+        -DateTime fechaInicio
+        -DateTime fechaFin
+        -String estado
+        +crearEleccion() void
+        +abrirVotacion() void
+        +cerrarVotacion() void
+        +obtenerEstado() String
+        +obtenerResultadosParciales() Map
+        +oficializarResultados() void
+    }
+
+    class ConfiguracionComicio {
+        -int idConfiguracion
+        -boolean permitirVotoEnBlanco
+        -boolean permitirVotoMultiple
+        -boolean mostrarResultadosTiempoReal
+        -int duracionMinutos
+        -String tipoAutenticacion
+        +validarConfiguracion() boolean
+        +aplicarConfiguracion() void
+    }
+
+    class Boleta {
+        -int idBoleta
+        -String titulo
+        -DateTime fechaPublicacion
+        -String estado
+        +obtenerListas() List
+        +obtenerCategorias() List
+        +validarSeleccion(seleccion Map) boolean
+        +publicar() void
+    }
+
+    class PadronElectoral {
+        -int idPadron
+        -int totalVotantesHabilitados
+        -DateTime fechaGeneracion
+        -Hash hashPadron
+        +importarVotantes(archivo String) void
+        +agregarVotante(votante Votante) void
+        +validarVotante(idVotante int) boolean
+        +generarMerkleTree() MerkleTree
+        +obtenerTotalHabilitados() int
+        +publicarPadron() void
+    }
+
+    class MerkleTree {
+        -Hash merkleRoot
+        -int totalHojas
+        -DateTime fechaGeneracion
+        +generarProof(idVotante int) MerkleProof
+        +verificarProof(proof MerkleProof) boolean
+        +obtenerRaiz() Hash
+    }
+
+    class Votante {
+        -int idVotante
+        -String emailInstitucional
+        -boolean habilitado
+        -DateTime ultimoAcceso
+        +autenticarOAuth() boolean
+        +solicitarProofPadron() MerkleProof
+        +verificarRecibo(hashRecibo Hash) boolean
+    }
+
+    class AutoridadElectoral {
+        -int idAutoridad
+        -String nombre
+        -String emailInstitucional
+        -String rol
+        +configurarComicio(config ConfiguracionComicio) void
+        +gestionarPadron(padron PadronElectoral) void
+        +registrarLista(lista Lista) void
+        +desplegarContrato() SmartContractEleccion
+        +generarReporte() ReporteInstitucional
+    }
+
+    class Observador {
+        -int idObservador
+        -String nombre
+        -String tipo
+        +consultarResultados(idEleccion int) Map
+        +verificarTransaccion(hashTx Hash) boolean
+        +auditarEscrutinio(idEleccion int) boolean
+        +consultarAuditLog(idEleccion int) AuditLog
+    }
+
+    class Categoria {
+        -int idCategoria
+        -String nombre
+        -String descripcion
+        -int cantidadCargos
+        +obtenerCandidatos() List
+    }
+
+    class Lista {
+        -int idLista
+        -String nombre
+        -String sigla
+        -String color
+        -DateTime fechaOficializacion
+        -String estado
+        -int minimoCandidatos
+        +agregarCandidato(candidato Candidato) void
+        +validarMinimosCandidatos() boolean
+        +oficializar() void
+        +obtenerCandidatos() List
+    }
+
+    class Candidato {
+        -int idCandidato
+        -String nombre
+        -String apellido
+        -String cargo
+        -int orden
+        +obtenerDatos() Map
+    }
+
+    %% ── Capa criptográfica y voto anónimo ──────────────────────────────────
+    class BilleteraEfimera {
+        -ClavePublica clavePublica
+        -String clavePrivadaEncriptada
+        -DateTime fechaCreacion
+        -DateTime fechaExpiracion
+        -boolean activa
+        +generarParClaves() void
+        +firmarVoto(payload String) Hash
+        +derivarNullifier(idEleccion int) Nullifier
+        +destruir() void
+    }
+
+    class Voto {
+        <<entidad anónima>>
+        -Hash hashVoto
+        -Hash firma
+        -MerkleProof merkleProof
+        -Nullifier nullifier
+        -DateTime fechaEmision
+        -String tipo
+        -boolean computado
+        +firmarConBilletera(billetera BilleteraEfimera) void
+        +adjuntarMerkleProof(proof MerkleProof) void
+        +enviarABlockchain() TransaccionBlockchain
+        +obtenerHash() Hash
+    }
+
+    class ReciboVotacion {
+        -Hash hashTransaccion
+        -Hash hashVoto
+        -DateTime fechaEmision
+        -int numeroBloque
+        +verificarEnBlockchain() boolean
+        +obtenerComprobante() String
+    }
+
+    class SmartContractEleccion {
+        -Address direccionContrato
+        -Hash merkleRootAlmacenada
+        -String estado
+        -DateTime fechaDespliegue
+        -Hash abiHash
+        -Map~Nullifier,Hash~ votosVigentesPorNullifier
+        +registrarVoto(votoFirmado Hash, proof MerkleProof, nullifier Nullifier) boolean
+        +invalidarVotoAnterior(nullifier Nullifier) void
+        +obtenerVotoVigente(nullifier Nullifier) Hash
+        +verificarMerkleProof(proof MerkleProof, root Hash) boolean
+        +obtenerResultados() Map
+        +obtenerEstadoContrato() String
+        +emitirEvento(tipoEvento String) void
+    }
+
+    class MotorOffChain {
+        -Map~Nullifier,Hash~ registroNullifiers
+        +derivarNullifier(clavePublica ClavePublica, idEleccion int) Nullifier
+        +registrarEmision(nullifier Nullifier, hashVoto Hash) void
+        +invalidarVotoPrevio(nullifier Nullifier) Hash
+        +obtenerVotoVigente(nullifier Nullifier) Hash
+        +sincronizarConContrato(contrato SmartContractEleccion) void
+    }
+
+    class TransaccionBlockchain {
+        -Hash hashTransaccion
+        -int numeroBloque
+        -DateTime timestamp
+        -String estado
+        -int gasUsado
+        +confirmarTransaccion() boolean
+        +obtenerRecibo() ReciboVotacion
+        +verificarIntegridad() boolean
+    }
+
+    class ReporteInstitucional {
+        -int idReporte
+        -String tipo
+        -DateTime fechaGeneracion
+        -String contenido
+        -String formato
+        +generar() void
+        +exportar(formato String) String
+    }
+
+    class AuditLog {
+        -int idLog
+        -String tipoEvento
+        -DateTime timestamp
+        -String actor
+        -String descripcion
+        -Hash hashRegistro
+        +registrarEvento(evento String) void
+        +consultarHistorial(filtro String) List
+        +verificarIntegridad() boolean
+    }
+
+    class ActividadElectoral {
+        -int idActividad
+        -String tipo
+        -DateTime timestamp
+        -String descripcion
+        +registrar() void
+    }
+
+    %% ── Composición del comicio ────────────────────────────────────────────
+    Eleccion "1" *-- "1" ConfiguracionComicio : configura
+    Eleccion "1" *-- "1" Boleta : publica
+    Eleccion "1" *-- "1" SmartContractEleccion : despliega
+    Eleccion "1" *-- "0..*" AuditLog : registra eventos
+    Eleccion "1" *-- "0..*" ActividadElectoral : traza
+
+    ConfiguracionComicio "1" *-- "1" PadronElectoral : habilita
+    PadronElectoral "1" *-- "1" MerkleTree : genera
+    PadronElectoral "1" o-- "1..*" Votante : incluye
+
+    %% ── Estructura electoral (relación directa con Eleccion) ───────────────
+    Eleccion "1" *-- "1..*" Lista : contiene
+    Eleccion "1" *-- "1..*" Categoria : organiza
+    Lista "1" *-- "1..*" Candidato : compone
+    Categoria "1" -- "0..*" Candidato : clasifica
+
+    AutoridadElectoral "1..*" --> "1..*" Eleccion : administra
+    Observador "0..*" --> "0..*" Eleccion : audita
+
+    %% ── Flujo de voto ───────────────────────────────────────────────────────
+    Votante ..> MerkleTree : valida pertenencia via proof
+    Votante ..> BilleteraEfimera : usa temporalmente
+    BilleteraEfimera ..> Voto : firma y emite
+    Voto ..> Lista : selecciona opciones
+    Voto ..> TransaccionBlockchain : produce
+    TransaccionBlockchain "1" --> "1" ReciboVotacion : emite
+    Votante ..> ReciboVotacion : verifica sin vincular identidad
+
+    SmartContractEleccion "1" *-- "0..*" TransaccionBlockchain : contiene
+    SmartContractEleccion "1" --> "1" MotorOffChain : coordina nullifiers
+
+    AutoridadElectoral "1" --> "0..*" ReporteInstitucional : genera
+
+    note for Voto "Sin asociación estructural a Votante.\nEl voto nace huérfano de identidad (Ley 25.326)."
+    note for BilleteraEfimera "Generada tras validar MerkleProof.\nSin FK permanente al Votante."
