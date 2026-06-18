@@ -4,6 +4,14 @@ Bitácora de modificaciones a los diagramas de `diagramas/`. Cada entrada docume
 
 ---
 
+## 2026-06-16 — Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
+
+- **Tipo de cambio**: extensión de `LISTA` y `CANDIDATO` para US-318 (CRUD pre-oficialización y mapeo Web3).
+- **Motivo**: US-318 — Gestionar listas y candidatos. Se agrega `list_id` en `LISTA` (identificador congelado al oficializar) y `ficha_institucional` JSONB en `CANDIDATO` (legajo UTN, DNI, avales).
+- **Archivo nuevo**: `Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
+
+---
+
 ## 2026-06-11 — Diagrama Entidad Relación - Sprint 0 - PFISI.mmd
 
 - **Tipo de cambio**: refinamiento semántico y estructural de `PADRON_VOTANTE`.
