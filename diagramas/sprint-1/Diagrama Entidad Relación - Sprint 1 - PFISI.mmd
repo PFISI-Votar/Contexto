@@ -83,7 +83,32 @@ erDiagram
         string cargo "Cargo al que se postula"
         int orden "Orden en la lista"
         string foto_url "URL de la foto del candidato"
-        json ficha_institucional "Legajo UTN, DNI y avales (JSONB — US-318)"
+        json datos_adicionales "Valores de campos dinámicos por candidato (JSONB — US-318)"
+    }
+
+    CONFIGURACION_DATOS_CANDIDATO {
+        int id_configuracion PK "Identificador de la configuración de campos"
+        int id_eleccion FK, UK "Relación 1:1 con la elección"
+        datetime fecha_creacion "Timestamp de creación"
+        datetime fecha_actualizacion "Timestamp de última modificación"
+    }
+
+    CAMPO_DATOS_CANDIDATO {
+        int id_campo PK "Identificador del campo definido"
+        int id_configuracion FK "Configuración a la que pertenece"
+        string clave UK "Clave técnica del campo (única por configuración)"
+        string etiqueta "Etiqueta visible en formularios"
+        string tipo "texto | numero | email | url | fecha | booleano"
+        boolean obligatorio "Si el campo es requerido al registrar candidato"
+        string ejemplo "Valor de ejemplo opcional"
+        string ayuda "Texto de ayuda opcional"
+        int orden UK "Orden de visualización (único por configuración)"
+        int min_length "Longitud mínima (texto)"
+        int max_length "Longitud máxima (texto)"
+        float min_valor "Valor mínimo (numero)"
+        float max_valor "Valor máximo (numero)"
+        string pattern "Expresión regular opcional"
+        string pattern_message "Mensaje de error del patrón"
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
@@ -336,6 +361,8 @@ erDiagram
     BOLETA ||--|{ LISTA : "contiene"
     LISTA ||--|{ CANDIDATO : "compone"
     CATEGORIA ||--o{ CANDIDATO : "clasifica"
+    ELECCION ||--|| CONFIGURACION_DATOS_CANDIDATO : "define campos candidato"
+    CONFIGURACION_DATOS_CANDIDATO ||--|{ CAMPO_DATOS_CANDIDATO : "compone"
 
     %% --- Padrón y votantes ---
     %% Un padrón puede tener múltiples árboles de Merkle (historial de

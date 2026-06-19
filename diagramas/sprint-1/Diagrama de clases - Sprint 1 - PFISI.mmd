@@ -1,0 +1,163 @@
+%% ============================================================================
+%% DIAGRAMA DE CLASES — Plataforma VOTAR
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09
+%% ============================================================================
+%% CAMBIOS SPRINT 1 (US-318):
+%% - Boleta como contenedor de listas y categorías (alineado a implementación)
+%% - ConfiguracionDatosCandidato + CampoDatosCandidato (campos dinámicos)
+%% - Lista.listId y Candidato.datosAdicionales para oferta pre-oficialización
+%% - Servicios de aplicación NestJS: lista/, candidato/ y núcleo eleccion/
+%% ============================================================================
+
+classDiagram
+
+    %% ── Núcleo del comicio ───────────────────────────────────────────────
+    class Eleccion {
+        -int idEleccion
+        -String nombre
+        -String descripcion
+        -DateTime fechaInicio
+        -DateTime fechaFin
+        -String estado
+        +crearEleccion() void
+        +listarElecciones() List
+        +obtenerPorId(id int) Eleccion
+    }
+
+    class Boleta {
+        -int idBoleta
+        -String titulo
+        -DateTime fechaPublicacion
+        -String estado
+        +ensureBoleta(idEleccion int) Boleta
+        +obtenerListas() List
+        +obtenerCategorias() List
+    }
+
+    class Categoria {
+        -int idCategoria
+        -String nombre
+        -String descripcion
+        -int cantidadCargos
+        -int orden
+    }
+
+    class Lista {
+        -int idLista
+        -String nombre
+        -String sigla
+        -String color
+        -DateTime fechaOficializacion
+        -String estado
+        -Integer listId
+        +create(dto) Lista
+        +update(dto) Lista
+        +remove() void
+        +findAllByEleccion(idEleccion int) List
+    }
+
+    class Candidato {
+        -int idCandidato
+        -String nombre
+        -String apellido
+        -String cargo
+        -int orden
+        -Map datosAdicionales
+        +create(dto) Candidato
+        +update(dto) Candidato
+        +remove() void
+        +findAllByLista(idLista int) List
+    }
+
+    class ConfiguracionDatosCandidato {
+        -int idConfiguracion
+        -int idEleccion
+        -DateTime fechaCreacion
+        -DateTime fechaActualizacion
+        +obtenerPorEleccion(idEleccion int) ConfiguracionDatosCandidato
+        +guardar(dto) ConfiguracionDatosCandidato
+        +crearConfiguracionPorDefecto(idEleccion int) void
+    }
+
+    class CampoDatosCandidato {
+        -int idCampo
+        -String clave
+        -String etiqueta
+        -String tipo
+        -boolean obligatorio
+        -int orden
+        -ValidacionCampo validacion
+    }
+
+    class ValidacionCampo {
+        <<value object>>
+        -Integer minLength
+        -Integer maxLength
+        -Double minValor
+        -Double maxValor
+        -String pattern
+        -String patternMessage
+    }
+
+    %% ── Servicios de aplicación (NestJS) ───────────────────────────────────
+    class EleccionesService {
+        +crearEleccion(dto) Eleccion
+        +listarElecciones() List
+        +obtenerPorId(id int) Eleccion
+    }
+
+    class ListaService {
+        +create(idEleccion, dto) Lista
+        +update(idLista, dto) Lista
+        +remove(idLista) void
+        +findAllByEleccion(idEleccion int) List
+    }
+
+    class OficializacionService {
+        +oficializar(idEleccion int) OficializarResponse
+        +obtenerMapeo(idEleccion int) List
+    }
+
+    class CandidatoService {
+        +create(idLista, dto) Candidato
+        +update(idCandidato, dto) Candidato
+        +remove(idCandidato) void
+        +findAllByLista(idLista int) List
+    }
+
+    class ConfiguracionDatosCandidatoService {
+        +obtenerPorEleccion(idEleccion int) ConfiguracionDatosCandidato
+        +guardar(idEleccion, dto) ConfiguracionDatosCandidato
+        +obtenerCamposPorEleccion(idEleccion int) List
+    }
+
+    class CandidatoDatosValidatorService {
+        +validateDatosAdicionales(campos, datos) void
+    }
+
+    %% ── Composición del dominio electoral ──────────────────────────────────
+    Eleccion "1" *-- "1" Boleta : publica
+    Boleta "1" *-- "1..*" Lista : contiene
+    Boleta "1" *-- "1..*" Categoria : organiza
+    Lista "1" *-- "0..*" Candidato : compone
+    Categoria "1" -- "0..*" Candidato : clasifica
+    Eleccion "1" *-- "0..1" ConfiguracionDatosCandidato : define campos
+    ConfiguracionDatosCandidato "1" *-- "0..*" CampoDatosCandidato : compone
+    CampoDatosCandidato "1" *-- "0..1" ValidacionCampo : valida
+
+    %% ── Orquestación de servicios ──────────────────────────────────────────
+    EleccionesService ..> Eleccion : persiste
+    EleccionesService ..> ConfiguracionDatosCandidatoService : crea config default
+    ListaService ..> Lista : CRUD
+    ListaService ..> Boleta : ensureBoleta
+    OficializacionService ..> Lista : congela y asigna listId
+    CandidatoService ..> Candidato : CRUD
+    CandidatoService ..> ListaService : valida lista
+    CandidatoService ..> ConfiguracionDatosCandidatoService : obtiene campos
+    CandidatoService ..> CandidatoDatosValidatorService : valida datosAdicionales
+    ConfiguracionDatosCandidatoService ..> ConfiguracionDatosCandidato : persiste
+    ConfiguracionDatosCandidatoService ..> CampoDatosCandidato : reemplaza filas
+
+    note for Lista "Post-oficialización: estado OFICIALIZADA,\nlistId congelado, CRUD bloqueado (409)."
+    note for Candidato "datosAdicionales JSONB validado\ncontra CampoDatosCandidato del comicio."
