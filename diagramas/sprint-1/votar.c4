@@ -141,8 +141,8 @@ model {
         description "Permite cargar, validar y procesar la lista de votantes habilitados"
       }
       electionConfig = component "Configurador de Comicios" {
-        technology "React Component"
-        description "Alta de comicios en BORRADOR con fechas UTC ISO8601 y validación de ventana temporal"
+        technology "React / react-hook-form / Zod"
+        description "Formulario /comicios/nuevo: alta en BORRADOR con nombre, fechas UTC ISO8601, tipo de votación (POR_CANDIDATO | POR_LISTA | MIXTO), roles dinámicos con límite de postulantes, métodos de autenticación (Google, SSO Institucional — mín. 1) y validación client-side antes de POST /elecciones (US-316)"
       }
       ofertaElectoralPanel = component "Gestor de Oferta Electoral" {
         technology "React / TanStack Query / Zod"
@@ -228,7 +228,7 @@ model {
       }
       eleccionModule = component "Módulo Elección (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "Subdominios lista/ y candidato/: CRUD listas/candidatos, oficialización con asignación de list_id, configuración relacional de campos adicionales y bloqueo 409 post-oficialización (US-318)"
+        description "POST /elecciones: crea comicio en BORRADOR (elección, boleta, categorías/roles, configuracion_comicio, configuracion_datos_candidato) en transacción ACID sin escrituras Sepolia. Valida fechas futuras, roles y auth (422). Sanitiza entrada. Subdominios lista/ y candidato/: CRUD, oficialización list_id (US-316 + US-318)"
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
@@ -243,7 +243,7 @@ model {
 
       electionSchema = component "Esquema de Comicios" {
         technology "PostgreSQL Schema"
-        description "Comicios, ventanas temporales, parámetros, direcciones de contratos desplegados, Merkle Roots publicadas y política de voto múltiple (revote_enabled BOOL, max_votes_per_voter INT, min_interval_seconds INT, tally_policy ENUM)"
+        description "Tablas eleccion (tipo_votacion, estado BORRADOR), configuracion_comicio (metodos_autenticacion[], politica_revoto), ventanas temporales, parámetros de re-voto y direcciones de contratos/Merkle Roots (solo post-borrador). Política US-316: sin txs Sepolia en alta BORRADOR"
       }
       candidateSchema = component "Esquema de Categorías y Listas" {
         technology "PostgreSQL Schema (candidateSchema)"
@@ -379,7 +379,7 @@ model {
   // Frontends -> API Backend
   votar.bud.proofRequester -> votar.api.apiRouter "Solicita Merkle Proof autenticado" { technology "JSON/HTTPS" }
   votar.panel.voterManager -> votar.api.apiRouter "Envía CSV de padrón para procesamiento" { technology "multipart/HTTPS" }
-  votar.panel.electionConfig -> votar.api.apiRouter "Envía configuración del comicio" { technology "JSON/HTTPS" }
+  votar.panel.electionConfig -> votar.api.apiRouter "Crea comicio en BORRADOR (POST /elecciones)" { technology "JSON/HTTPS" }
   votar.panel.ofertaElectoralPanel -> votar.api.apiRouter "CRUD listas/candidatos y oficialización" { technology "JSON/HTTPS" }
   votar.panel.configDatosCandidatoPanel -> votar.api.apiRouter "Guarda definición de campos dinámicos" { technology "JSON/HTTPS" }
   votar.panel.revoteConfigurator -> votar.api.apiRouter "Envía RevoteConfig para validación y persistencia" { technology "JSON/HTTPS" }
@@ -389,9 +389,9 @@ model {
   // Flujo interno API Backend
   votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT en cada request"
   votar.api.jwtValidator -> sso "Obtiene JWKS y valida claims OIDC" { technology "HTTPS" }
-  votar.api.apiRouter -> votar.api.eleccionModule "Enruta operaciones de oferta electoral (US-318)"
+  votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
+  votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
-  votar.api.eleccionModule -> votar.api.dataAccess "Persiste listas, candidatos y configuración"
   votar.api.apiRouter -> votar.api.revotePolicyService "Persiste/consulta política de voto múltiple"
   votar.api.revotePolicyService -> votar.api.rulesEngine "Valida coherencia de RevoteConfig"
   votar.api.revotePolicyService -> votar.api.dataAccess "Persiste config en electionSchema"

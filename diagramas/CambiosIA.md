@@ -19,6 +19,25 @@ diagramas/
 
 ---
 
+## 2026-06-20 — sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd (corrección)
+
+- **Tipo de cambio**: refactor del diagrama de clases a modelo de análisis de dominio.
+- **Motivo**: eliminar artefactos de implementación (DTOs, repositories, servicios NestJS) y conservar entidades de negocio, value objects, enumeraciones y operaciones del dominio electoral (US-316 + US-318).
+- **Archivo modificado**: `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+
+---
+
+## 2026-06-20 — sprint-1 (US-316 — Crear comicio)
+
+- **Tipo de cambio**: extensión de modelo relacional, diagrama de clases y C4 para alta de comicio en BORRADOR.
+- **Motivo**: US-316 — Implementación de creación de comicio con `tipo_votacion`, roles/categorías dinámicas (`cantidad_cargos` = máximo postulantes), `configuracion_comicio.metodos_autenticacion[]` (Google, SSO Institucional), validación temporal HTTP 422, sanitización de entrada y aislamiento on-chain en estado BORRADOR.
+- **Archivos modificados**:
+  - `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+  - `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+  - `sprint-1/votar.c4`
+
+---
+
 ## 2026-06-19 — Reorganización por carpetas de sprint (incl. votar.c4)
 
 - **Tipo de cambio**: reestructuración de directorios; `votar.c4` versionado por sprint.
