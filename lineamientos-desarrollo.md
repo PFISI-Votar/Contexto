@@ -131,6 +131,7 @@ src/
 ```
 
 - Un **módulo por dominio** principal (ej. `eleccion`, `padron`, `auth`).
+- Dominios grandes pueden subdividirse en submódulos NestJS (ej. `eleccion/lista/`, `eleccion/candidato/` importados desde `eleccion.module.ts`).
 - Lógica de negocio en **services**; controllers delgados.
 - DTOs validados con `class-validator` / `class-transformer`.
 - Entidades con TypeORM en `entities/`.
@@ -176,7 +177,7 @@ src/
 │   └── ui/          # shadcn/ui
 ├── lib/
 │   └── utils.ts
-├── features/        # agrupar por dominio cuando crezca el proyecto
+├── features/        # agrupar por dominio (ej. eleccion/lista/, eleccion/candidato/)
 ├── hooks/
 ├── services/        # llamadas API
 └── App.tsx
@@ -210,6 +211,23 @@ npm run preview  # preview del build
 
 Los diagramas en `Contexto/diagramas/` son artefactos oficiales del proyecto. **Cualquier cambio estructural obliga a versionarlos.**
 
+### 6.0. Estructura de carpetas
+
+```
+diagramas/
+├── CambiosIA.md          # bitácora de cambios (raíz)
+├── sprint-0/             # diagramas del Sprint 0
+│   ├── Diagrama Entidad Relación - Sprint 0 - PFISI.mmd
+│   ├── Diagrama de clases - Sprint 0 - PFISI(1).mmd
+│   └── votar.c4
+└── sprint-1/             # diagramas del Sprint 1
+    ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
+    ├── Diagrama de clases - Sprint 1 - PFISI.mmd
+    └── votar.c4
+```
+
+Cada sprint tiene su carpeta (`sprint-N/`). DER, diagrama de clases y C4 (`votar.c4`) viven dentro de la carpeta del sprint al que corresponden. Solo `CambiosIA.md` permanece en la raíz de `diagramas/`.
+
 ### 6.1. Cuándo actualizar
 
 | Diagrama | Actualizar si... |
@@ -222,8 +240,9 @@ Los diagramas en `Contexto/diagramas/` son artefactos oficiales del proyecto. **
 ### 6.2. Procedimiento obligatorio
 
 1. **No editar in-place** la versión anterior del sprint.
-2. **Crear nueva versión** del archivo:
-   - Ejemplo: `Diagrama Entidad Relación - Sprint 0 - PFISI.mmd` → `Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+2. **Crear nueva versión** en la carpeta del sprint correspondiente:
+   - Ejemplo DER: `diagramas/sprint-0/Diagrama Entidad Relación - Sprint 0 - PFISI.mmd` → `diagramas/sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+   - Ejemplo C4: `diagramas/sprint-0/votar.c4` → `diagramas/sprint-1/votar.c4`
 3. **Registrar en** `Contexto/diagramas/CambiosIA.md`:
 
 ```markdown

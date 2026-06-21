@@ -104,18 +104,21 @@ codigo/
 │   └── src/       # app.module.ts, main.ts — bootstrap NestJS estándar
 ├── front/         # React SPA
 │   └── src/       # App.tsx, components/ui/ (shadcn), lib/utils.ts
-└── diagramas/     # Diagramas de referencia (.mmd Mermaid)
+└── diagramas/     # Diagramas de referencia por sprint
+    ├── CambiosIA.md
+    ├── sprint-0/  # DER, clases y votar.c4 del Sprint 0
+    └── sprint-1/  # DER, clases y votar.c4 del Sprint 1 (y sucesivos sprint-N/)
 ```
 
 ---
 
 ## Norma: Gestión de diagramas en `diagramas/`
 
-Los archivos `.mmd` en `diagramas/` son documentos de referencia teórica del Sprint 0. Cualquier modificación que afecte el contenido de un diagrama **requiere obligatoriamente**:
+Los archivos en `diagramas/sprint-N/` (`.mmd` y `votar.c4`) son documentos de referencia por sprint. Cualquier modificación que afecte el contenido de un diagrama **requiere obligatoriamente**:
 
-1. **Crear una nueva versión del archivo** con el cambio aplicado. Naming convention:
-   - Original: `Diagrama Entidad Relación - Sprint 0 - PFISI.mmd`
-   - Nueva versión: `Diagrama Entidad Relación - Sprint 1 - PFISI.mmd` (o el sprint/versión correspondiente)
+1. **Crear una nueva versión del archivo** en la carpeta del sprint correspondiente. Naming convention:
+   - Sprint 0: `diagramas/sprint-0/Diagrama Entidad Relación - Sprint 0 - PFISI.mmd`, `diagramas/sprint-0/votar.c4`
+   - Sprint 1: `diagramas/sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`, `diagramas/sprint-1/votar.c4` (o el sprint/versión correspondiente)
 
 2. **Agregar una entrada en `diagramas/CambiosIA.md`** con el siguiente formato:
    ```

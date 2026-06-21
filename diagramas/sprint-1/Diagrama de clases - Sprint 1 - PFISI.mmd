@@ -1,0 +1,194 @@
+%% ============================================================================
+%% DIAGRAMA DE CLASES — Plataforma VOTAR (Modelo de Análisis)
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09 — Sprint 1
+%% ============================================================================
+%% Evolución respecto a Sprint 0:
+%% - US-316 (Crear comicio): tipoVotacion, roles en categorías, métodos de
+%%   autenticación múltiples, alta en BORRADOR sin impacto blockchain
+%% - US-318 (Gestionar listas y candidatos): listId, datosAdicionales,
+%%   configuración relacional de campos dinámicos de candidato
+%% ============================================================================
+
+classDiagram
+
+    %% ── Enumeraciones de dominio ───────────────────────────────────────────
+    class EleccionEstado {
+        <<enumeration>>
+        BORRADOR
+        CONFIGURADA
+        ABIERTA
+        CERRADA
+        ESCRUTADA
+    }
+
+    class TipoVotacion {
+        <<enumeration>>
+        POR_CANDIDATO
+        POR_LISTA
+        MIXTO
+    }
+
+    class MetodoAutenticacion {
+        <<enumeration>>
+        GOOGLE
+        SSO_INSTITUCIONAL
+    }
+
+    class PoliticaRevoto {
+        <<enumeration>>
+        LAST_VOTE_WINS
+        DISABLED
+    }
+
+    class ValidacionCampo {
+        <<value object>>
+        -Integer minLength
+        -Integer maxLength
+        -Double minValor
+        -Double maxValor
+        -String pattern
+        -String patternMessage
+    }
+
+    %% ── Núcleo del comicio ───────────────────────────────────────────────
+    class Eleccion {
+        -int idEleccion
+        -String nombre
+        -String descripcion
+        -DateTime fechaInicio
+        -DateTime fechaFin
+        -EleccionEstado estado
+        -TipoVotacion tipoVotacion
+        -Integer minimoCandidatosPorLista
+        -DateTime fechaCreacion
+        -DateTime fechaActualizacion
+        +inicializarEnBorrador() void
+        +validarVentanaTemporal() boolean
+        +estaEnBorrador() boolean
+        +abrirVotacion() void
+        +cerrarVotacion() void
+        +oficializarOferta() void
+    }
+
+    class ConfiguracionComicio {
+        -int idConfiguracion
+        -boolean permitirVotoEnBlanco
+        -boolean permitirVotoMultiple
+        -int maxVotosPorVotante
+        -int minIntervaloSegundos
+        -boolean mostrarResultadosTiempoReal
+        -Integer duracionMinutos
+        -MetodoAutenticacion[] metodosAutenticacion
+        -PoliticaRevoto politicaRevoto
+        +definirMetodosAutenticacion(metodos MetodoAutenticacion[]) void
+        +validarMetodosAutenticacion() boolean
+        +validarConfiguracion() boolean
+    }
+
+    class AutoridadElectoral {
+        -int idAutoridad
+        -String nombre
+        -String emailInstitucional
+        -String rol
+        +crearComicio(eleccion Eleccion) Eleccion
+        +configurarAccesoVotantes(config ConfiguracionComicio) void
+        +definirRolesPostulacion(categorias Categoria[]) void
+        +gestionarOfertaElectoral(eleccion Eleccion) void
+    }
+
+    %% ── Oferta electoral ─────────────────────────────────────────────────
+    class Boleta {
+        -int idBoleta
+        -String titulo
+        -DateTime fechaPublicacion
+        -String estado
+        +crearParaEleccion(eleccion Eleccion) Boleta
+        +agregarRol(categoria Categoria) void
+        +agregarLista(lista Lista) void
+        +obtenerListas() List
+        +obtenerCategorias() List
+        +publicar() void
+    }
+
+    class Categoria {
+        -int idCategoria
+        -String nombre
+        -String descripcion
+        -int cantidadCargos
+        -int orden
+        +definirRol(nombre String, maxPostulantes int) void
+        +obtenerCandidatos() List
+        +validarCupoPostulantes(cantidadActual int) boolean
+    }
+
+    class Lista {
+        -int idLista
+        -String nombre
+        -String sigla
+        -String color
+        -DateTime fechaOficializacion
+        -String estado
+        -Integer listId
+        -int minimoCandidatos
+        +agregarCandidato(candidato Candidato) void
+        +validarMinimosCandidatos() boolean
+        +oficializar() void
+        +obtenerCandidatos() List
+        +estaOficializada() boolean
+    }
+
+    class Candidato {
+        -int idCandidato
+        -String nombre
+        -String apellido
+        -int orden
+        -String fotoUrl
+        -Map datosAdicionales
+        +registrarEnLista(lista Lista, categoria Categoria) void
+        +completarDatosAdicionales(datos Map) void
+        +validarDatosContraConfiguracion(config ConfiguracionDatosCandidato) boolean
+    }
+
+    class ConfiguracionDatosCandidato {
+        -int idConfiguracion
+        -DateTime fechaCreacion
+        -DateTime fechaActualizacion
+        +agregarCampo(campo CampoDatosCandidato) void
+        +obtenerCampos() List
+        +validarDatosCandidato(datos Map) boolean
+    }
+
+    class CampoDatosCandidato {
+        -int idCampo
+        -String clave
+        -String etiqueta
+        -String tipo
+        -boolean obligatorio
+        -int orden
+        +esObligatorio() boolean
+        +validarValor(valor String) boolean
+    }
+
+    %% ── Composición y asociaciones ───────────────────────────────────────
+    Eleccion "1" *-- "1" ConfiguracionComicio : configura
+    Eleccion "1" *-- "1" Boleta : publica
+    Eleccion "1" *-- "0..1" ConfiguracionDatosCandidato : define campos
+    Boleta "1" *-- "1..*" Categoria : organiza roles
+    Boleta "1" *-- "0..*" Lista : contiene
+    Lista "1" *-- "0..*" Candidato : compone
+    Categoria "1" -- "0..*" Candidato : clasifica
+    ConfiguracionDatosCandidato "1" *-- "0..*" CampoDatosCandidato : compone
+    CampoDatosCandidato "1" *-- "0..1" ValidacionCampo : restringe
+
+    AutoridadElectoral "1..*" --> "1..*" Eleccion : administra
+    Eleccion --> EleccionEstado : estado
+    Eleccion --> TipoVotacion : modalidad
+    ConfiguracionComicio --> MetodoAutenticacion : acceso votantes
+    ConfiguracionComicio --> PoliticaRevoto : revoto
+
+    note for Eleccion "US-316: inicializarEnBorrador() crea el proceso\nen capa relacional sin despliegue blockchain."
+    note for Categoria "cantidadCargos = máximo de postulantes\npermitidos para el rol en la lista."
+    note for ConfiguracionComicio "US-316: debe existir al menos un\nmétodo de autenticación activo."
+    note for Lista "US-318: post-oficialización congela listId\ny bloquea modificaciones."
+    note for Candidato "datosAdicionales conforme a la\ndefinición de CampoDatosCandidato."

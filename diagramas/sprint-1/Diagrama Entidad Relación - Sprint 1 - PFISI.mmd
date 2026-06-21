@@ -18,11 +18,12 @@ erDiagram
 
     ELECCION {
         int id_eleccion PK "Identificador único de la elección"
-        string nombre "Nombre descriptivo del comicio"
+        string nombre "Nombre descriptivo del comicio (sanitizado en alta)"
         string descripcion "Descripción del proceso electoral"
-        datetime fecha_inicio "Fecha y hora de apertura del comicio"
-        datetime fecha_fin "Fecha y hora de cierre del comicio"
+        datetime fecha_inicio "Fecha y hora de apertura del comicio (UTC, futura)"
+        datetime fecha_fin "Fecha y hora de cierre del comicio (UTC, futura > inicio)"
         string estado "BORRADOR | CONFIGURADA | ABIERTA | CERRADA | ESCRUTADA"
+        string tipo_votacion "POR_CANDIDATO | POR_LISTA | MIXTO — modalidad electoral (US-316)"
         int minimo_candidatos_por_lista "Mínimo de candidatos requeridos por lista"
         datetime fecha_creacion "Timestamp de creación del registro"
         datetime fecha_actualizacion "Timestamp de última modificación"
@@ -37,7 +38,7 @@ erDiagram
         int min_intervalo_segundos "Tiempo mínimo entre re-votos"
         boolean mostrar_resultados_tiempo_real "Muestra resultados parciales en vivo"
         int duracion_minutos "Duración total del comicio en minutos"
-        string tipo_autenticacion "SSO_OIDC | CERTIFICADO_DIGITAL"
+        string[] metodos_autenticacion "GOOGLE | SSO_INSTITUCIONAL — mín. 1 activo (US-316)"
         string politica_revoto "LAST_VOTE_WINS | DISABLED"
     }
 
@@ -54,11 +55,11 @@ erDiagram
     }
 
     CATEGORIA {
-        int id_categoria PK "Identificador único de la categoría"
+        int id_categoria PK "Identificador único de la categoría / rol"
         int id_boleta FK "Boleta a la que pertenece"
-        string nombre "Nombre del cargo o categoría (ej: Presidente)"
-        string descripcion "Descripción del cargo"
-        int cantidad_cargos "Cantidad de cargos a cubrir"
+        string nombre "Nombre del rol de candidato (ej: Presidente)"
+        string descripcion "Descripción del rol"
+        int cantidad_cargos "Máximo de postulantes permitidos para el rol en la lista"
         int orden "Orden de visualización en la boleta"
     }
 
@@ -77,13 +78,37 @@ erDiagram
     CANDIDATO {
         int id_candidato PK "Identificador único del candidato"
         int id_lista FK "Lista a la que pertenece"
-        int id_categoria FK "Categoría/cargo al que postula"
+        int id_categoria FK "Rol/categoría al que postula"
         string nombre "Nombre del candidato"
         string apellido "Apellido del candidato"
-        string cargo "Cargo al que se postula"
         int orden "Orden en la lista"
         string foto_url "URL de la foto del candidato"
-        json ficha_institucional "Legajo UTN, DNI y avales (JSONB — US-318)"
+        json datos_adicionales "Valores de campos dinámicos por candidato (JSONB — US-318)"
+    }
+
+    CONFIGURACION_DATOS_CANDIDATO {
+        int id_configuracion PK "Identificador de la configuración de campos"
+        int id_eleccion FK, UK "Relación 1:1 con la elección"
+        datetime fecha_creacion "Timestamp de creación"
+        datetime fecha_actualizacion "Timestamp de última modificación"
+    }
+
+    CAMPO_DATOS_CANDIDATO {
+        int id_campo PK "Identificador del campo definido"
+        int id_configuracion FK "Configuración a la que pertenece"
+        string clave UK "Clave técnica del campo (única por configuración)"
+        string etiqueta "Etiqueta visible en formularios"
+        string tipo "texto | numero | email | url | fecha | booleano"
+        boolean obligatorio "Si el campo es requerido al registrar candidato"
+        string ejemplo "Valor de ejemplo opcional"
+        string ayuda "Texto de ayuda opcional"
+        int orden UK "Orden de visualización (único por configuración)"
+        int min_length "Longitud mínima (texto)"
+        int max_length "Longitud máxima (texto)"
+        float min_valor "Valor mínimo (numero)"
+        float max_valor "Valor máximo (numero)"
+        string pattern "Expresión regular opcional"
+        string pattern_message "Mensaje de error del patrón"
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
@@ -336,6 +361,8 @@ erDiagram
     BOLETA ||--|{ LISTA : "contiene"
     LISTA ||--|{ CANDIDATO : "compone"
     CATEGORIA ||--o{ CANDIDATO : "clasifica"
+    ELECCION ||--|| CONFIGURACION_DATOS_CANDIDATO : "define campos candidato"
+    CONFIGURACION_DATOS_CANDIDATO ||--|{ CAMPO_DATOS_CANDIDATO : "compone"
 
     %% --- Padrón y votantes ---
     %% Un padrón puede tener múltiples árboles de Merkle (historial de
