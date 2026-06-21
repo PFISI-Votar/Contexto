@@ -116,10 +116,15 @@ classDiagram
         -String nombre
         -String descripcion
         -int cantidadCargos
+        -int minimoPostulantes
         -int orden
-        +definirRol(nombre String, maxPostulantes int) void
+        +definirRol(nombre String, minPostulantes int, maxPostulantes int) void
         +obtenerCandidatos() List
         +validarCupoPostulantes(cantidadActual int) boolean
+    }
+
+    class RulesEngineService {
+        +validateMinimoCandidatos(context MinimoCandidatosContext) MinimoCandidatosValidationResult
     }
 
     class Lista {
@@ -182,13 +187,15 @@ classDiagram
     CampoDatosCandidato "1" *-- "0..1" ValidacionCampo : restringe
 
     AutoridadElectoral "1..*" --> "1..*" Eleccion : administra
+    RulesEngineService ..> Lista : valida mínimos
+    RulesEngineService ..> Categoria : consulta cupos
     Eleccion --> EleccionEstado : estado
     Eleccion --> TipoVotacion : modalidad
     ConfiguracionComicio --> MetodoAutenticacion : acceso votantes
     ConfiguracionComicio --> PoliticaRevoto : revoto
 
     note for Eleccion "US-316: inicializarEnBorrador() crea el proceso\nen capa relacional sin despliegue blockchain."
-    note for Categoria "cantidadCargos = máximo de postulantes\npermitidos para el rol en la lista."
+    note for Categoria "cantidadCargos = máximo de postulantes;\nminimoPostulantes = mínimo por rol (US-319)."
     note for ConfiguracionComicio "US-316: debe existir al menos un\nmétodo de autenticación activo."
     note for Lista "US-318: post-oficialización congela listId\ny bloquea modificaciones."
     note for Candidato "datosAdicionales conforme a la\ndefinición de CampoDatosCandidato."

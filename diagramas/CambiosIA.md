@@ -19,6 +19,16 @@ diagramas/
 
 ---
 
+## 2026-06-20 — sprint-1 (US-319 — Validar mínimo de candidatos)
+
+- **Tipo de cambio**: extensión de `CATEGORIA` con mínimo por rol; componente `RulesEngineService` en diagrama de clases.
+- **Motivo**: US-319 — Bloquear oficialización si alguna lista no alcanza `minimo_postulantes` por categoría; motor de reglas devuelve desglose por lista/categoría antes de transicionar a CONFIGURADA.
+- **Archivos modificados**:
+  - `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+  - `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+
+---
+
 ## 2026-06-20 — sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd (corrección)
 
 - **Tipo de cambio**: refactor del diagrama de clases a modelo de análisis de dominio.
