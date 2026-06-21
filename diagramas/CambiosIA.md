@@ -19,6 +19,25 @@ diagramas/
 
 ---
 
+## 2026-06-20 — sprint-1 (US-319 — corrección modelo de análisis y DER)
+
+- **Tipo de cambio**: alineación del diagrama de clases (modelo de análisis) y limpieza del DER con la implementación US-319.
+- **Motivo**: US-319 — El mínimo de candidatos es por rol (`CATEGORIA.minimo_postulantes`), no por lista. El diagrama de clases no debe incluir servicios de implementación (`RulesEngineService`); la regla de negocio se modela en `Categoria`, `Lista` y value objects transitorios de validación.
+- **Diagrama de clases**:
+  - Eliminados `RulesEngineService`, `Eleccion.minimoCandidatosPorLista` y `Lista.minimoCandidatos`.
+  - Agregados value objects `ViolacionMinimoCandidatos` y `ResultadoValidacionMinimos`.
+  - Agregadas operaciones de dominio `Lista.contarCandidatosPorCategoria()` y `Lista.cumpleMinimosCandidatos()`.
+  - Notas US-319 en `Eleccion.oficializarOferta()` y `Lista`.
+- **DER**:
+  - Eliminado `LISTA.minimo_candidatos` (no existe en esquema implementado).
+  - Aclarado `ELECCION.minimo_candidatos_por_lista` como legacy/no usado por US-319.
+  - Documentada regla de validación en `CATEGORIA.minimo_postulantes`.
+- **Archivos modificados**:
+  - `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+  - `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+
+---
+
 ## 2026-06-20 — sprint-1 (US-319 — Validar mínimo de candidatos)
 
 - **Tipo de cambio**: extensión de `CATEGORIA` con mínimo por rol; componente `RulesEngineService` en diagrama de clases.
@@ -26,6 +45,7 @@ diagramas/
 - **Archivos modificados**:
   - `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
   - `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+- **Nota**: superseded parcialmente por la entrada «corrección modelo de análisis y DER» del mismo día.
 
 ---
 

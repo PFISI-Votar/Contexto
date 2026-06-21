@@ -8,6 +8,8 @@
 %%   autenticación múltiples, alta en BORRADOR sin impacto blockchain
 %% - US-318 (Gestionar listas y candidatos): listId, datosAdicionales,
 %%   configuración relacional de campos dinámicos de candidato
+%% - US-319 (Validar mínimo de candidatos): minimoPostulantes por categoría,
+%%   validación de cupos al oficializar oferta electoral
 %% ============================================================================
 
 classDiagram
@@ -51,6 +53,21 @@ classDiagram
         -String patternMessage
     }
 
+    class ViolacionMinimoCandidatos {
+        <<value object>>
+        -String nombreLista
+        -String nombreCategoria
+        -int minimoRequerido
+        -int cantidadActual
+        -int faltantes
+    }
+
+    class ResultadoValidacionMinimos {
+        <<value object>>
+        -boolean valido
+        -ViolacionMinimoCandidatos[] violaciones
+    }
+
     %% ── Núcleo del comicio ───────────────────────────────────────────────
     class Eleccion {
         -int idEleccion
@@ -60,7 +77,6 @@ classDiagram
         -DateTime fechaFin
         -EleccionEstado estado
         -TipoVotacion tipoVotacion
-        -Integer minimoCandidatosPorLista
         -DateTime fechaCreacion
         -DateTime fechaActualizacion
         +inicializarEnBorrador() void
@@ -123,10 +139,6 @@ classDiagram
         +validarCupoPostulantes(cantidadActual int) boolean
     }
 
-    class RulesEngineService {
-        +validateMinimoCandidatos(context MinimoCandidatosContext) MinimoCandidatosValidationResult
-    }
-
     class Lista {
         -int idLista
         -String nombre
@@ -135,9 +147,9 @@ classDiagram
         -DateTime fechaOficializacion
         -String estado
         -Integer listId
-        -int minimoCandidatos
         +agregarCandidato(candidato Candidato) void
-        +validarMinimosCandidatos() boolean
+        +contarCandidatosPorCategoria(categoria Categoria) int
+        +cumpleMinimosCandidatos(categorias Categoria[]) ResultadoValidacionMinimos
         +oficializar() void
         +obtenerCandidatos() List
         +estaOficializada() boolean
@@ -185,17 +197,19 @@ classDiagram
     Categoria "1" -- "0..*" Candidato : clasifica
     ConfiguracionDatosCandidato "1" *-- "0..*" CampoDatosCandidato : compone
     CampoDatosCandidato "1" *-- "0..1" ValidacionCampo : restringe
+    ResultadoValidacionMinimos "1" *-- "0..*" ViolacionMinimoCandidatos : detalla
 
     AutoridadElectoral "1..*" --> "1..*" Eleccion : administra
-    RulesEngineService ..> Lista : valida mínimos
-    RulesEngineService ..> Categoria : consulta cupos
+    Lista ..> ResultadoValidacionMinimos : evalúa cupos
+    Categoria ..> ResultadoValidacionMinimos : define mínimos
     Eleccion --> EleccionEstado : estado
     Eleccion --> TipoVotacion : modalidad
     ConfiguracionComicio --> MetodoAutenticacion : acceso votantes
     ConfiguracionComicio --> PoliticaRevoto : revoto
 
-    note for Eleccion "US-316: inicializarEnBorrador() crea el proceso\nen capa relacional sin despliegue blockchain."
+    note for Eleccion "US-316: inicializarEnBorrador() crea el proceso\nen capa relacional sin despliegue blockchain.\nUS-319: oficializarOferta() bloqueada si alguna\nlista no alcanza minimoPostulantes por categoría."
     note for Categoria "cantidadCargos = máximo de postulantes;\nminimoPostulantes = mínimo por rol (US-319)."
     note for ConfiguracionComicio "US-316: debe existir al menos un\nmétodo de autenticación activo."
-    note for Lista "US-318: post-oficialización congela listId\ny bloquea modificaciones."
+    note for Lista "US-318: post-oficialización congela listId\ny bloquea modificaciones.\nUS-319: cumpleMinimosCandidatos() compara\ncandidatos por categoría contra cupos."
     note for Candidato "datosAdicionales conforme a la\ndefinición de CampoDatosCandidato."
+    note for ViolacionMinimoCandidatos "Resultado transitorio de validación;\nno se persiste. Indica lista, categoría\ny candidatos faltantes."

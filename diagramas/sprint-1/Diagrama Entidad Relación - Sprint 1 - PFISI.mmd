@@ -24,7 +24,7 @@ erDiagram
         datetime fecha_fin "Fecha y hora de cierre del comicio (UTC, futura > inicio)"
         string estado "BORRADOR | CONFIGURADA | ABIERTA | CERRADA | ESCRUTADA"
         string tipo_votacion "POR_CANDIDATO | POR_LISTA | MIXTO — modalidad electoral (US-316)"
-        int minimo_candidatos_por_lista "Mínimo de candidatos requeridos por lista"
+        int minimo_candidatos_por_lista "Legacy/reservado — no usado por US-319; el mínimo vigente es CATEGORIA.minimo_postulantes"
         datetime fecha_creacion "Timestamp de creación del registro"
         datetime fecha_actualizacion "Timestamp de última modificación"
     }
@@ -60,7 +60,7 @@ erDiagram
         string nombre "Nombre del rol de candidato (ej: Presidente)"
         string descripcion "Descripción del rol"
         int cantidad_cargos "Máximo de postulantes permitidos para el rol en la lista"
-        int minimo_postulantes "Mínimo de postulantes requeridos por rol en cada lista (US-319)"
+        int minimo_postulantes "Mínimo de postulantes por rol en cada lista (US-319). Al oficializar se valida contando CANDIDATO por (id_lista, id_categoria)"
         int orden "Orden de visualización en la boleta"
     }
 
@@ -72,7 +72,6 @@ erDiagram
         string color "Color identificativo (hex)"
         datetime fecha_oficializacion "Fecha de oficialización"
         string estado "BORRADOR | OFICIALIZADA | INHABILITADA"
-        int minimo_candidatos "Mínimo de candidatos requeridos"
         int list_id "Identificador congelado post-oficialización para Web3/BUD (UNIQUE por boleta)"
     }
 
