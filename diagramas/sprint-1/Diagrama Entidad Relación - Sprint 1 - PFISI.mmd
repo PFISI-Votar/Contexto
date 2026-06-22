@@ -122,6 +122,9 @@ erDiagram
         datetime fecha_generacion "Fecha de generación/importación"
         string hash_padron "Hash SHA-256 del padrón completo"
         string estado "BORRADOR | PUBLICADO | CERRADO"
+        int total_procesados "US-331: filas de datos leídas del CSV"
+        int total_omitidos "US-331: filas omitidas (defectuosas o duplicadas)"
+        jsonb novedades "US-331: reporte de novedades [linea, tipo, motivo] sin PII (Ley 25.326)"
     }
 
     VOTANTE {

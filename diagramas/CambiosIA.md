@@ -19,6 +19,14 @@ diagramas/
 
 ---
 
+## 2026-06-21 — sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
+
+- **Tipo de cambio**: extensión de `PADRON_ELECTORAL` con la persistencia del reporte de novedades de importación.
+- **Motivo**: US-331 — Importador tolerante a errores. Para permitir la re-descarga del archivo de auditoría tras cerrar el modal, se persisten `total_procesados` (int), `total_omitidos` (int) y `novedades` (jsonb, array `[linea, tipo, motivo]`). El reporte no contiene datos identificatorios en texto plano (Ley 25.326). Migración `AddNovedadesPadron1782050000000`.
+- **Archivo modificado**: `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+
+---
+
 ## 2026-06-20 — sprint-1 (US-319 — corrección modelo de análisis y DER)
 
 - **Tipo de cambio**: alineación del diagrama de clases (modelo de análisis) y limpieza del DER con la implementación US-319.
