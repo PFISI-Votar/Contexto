@@ -19,6 +19,17 @@ diagramas/
 
 ---
 
+## 2026-06-24 — sprint-1 (US-355 — Boleta Única Digital / confirmación off-chain)
+
+- **Tipo de cambio**: nueva entidad `VOTO_CONFIRMACION` en DER; extensión del modelo de análisis y C4 con módulo BUD de confirmación.
+- **Motivo**: US-355 — Documentar recepción off-chain del voto desde la BUD con idempotencia, anti doble voto por `votante_hash` y persistencia exclusiva de hashes (sin selección en claro). Alineación con migración `VotoConfirmacion1782160000000` en `back`.
+- **Archivos modificados**:
+  - `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+  - `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+  - `sprint-1/votar.c4`
+
+---
+
 ## 2026-06-21 — sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
 
 - **Tipo de cambio**: extensión de `PADRON_ELECTORAL` con la persistencia del reporte de novedades de importación.
