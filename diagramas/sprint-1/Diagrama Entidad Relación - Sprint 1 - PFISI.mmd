@@ -240,6 +240,20 @@ erDiagram
         int id_candidato FK "Candidato seleccionado (null si voto en blanco)"
     }
 
+    %% Capa off-chain BUD: recepción e idempotencia sin selección en claro.
+    %% No reemplaza al VOTO anónimo ni persiste candidatos seleccionados.
+    %% Restricciones: UNIQUE(id_eleccion, votante_hash) y UNIQUE(id_eleccion, idempotency_key).
+    VOTO_CONFIRMACION {
+        uuid id_voto_confirmacion PK "Identificador de la confirmación off-chain (US BUD)"
+        int id_eleccion FK "Comicio confirmado"
+        string votante_hash "Hash de sesión/padrón (64 hex). Anti doble voto pre-chain"
+        uuid idempotency_key "Clave idempotente del cliente"
+        string payload_hash "SHA-256 del payload confirmado (sin selección en claro)"
+        string comprobante_hash "SHA-256 del comprobante devuelto al votante"
+        string estado "RECIBIDO"
+        datetime recibido_en "Timestamp de recepción"
+    }
+
     %% ═══════════════════════════════════════════════════════════════════════
     %% TRANSACCIONES BLOCKCHAIN (Registro off-chain de txs on-chain)
     %% ═══════════════════════════════════════════════════════════════════════
@@ -383,6 +397,7 @@ erDiagram
 
     %% --- Votos anónimos (SIN FK a Votante — Ley 25.326) ---
     ELECCION ||--o{ VOTO : "recibe"
+    ELECCION ||--o{ VOTO_CONFIRMACION : "registra confirmaciones BUD"
     VOTO ||--|{ VOTO_DETALLE : "contiene"
     VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"

@@ -43,6 +43,11 @@ classDiagram
         DISABLED
     }
 
+    class VotoConfirmacionEstado {
+        <<enumeration>>
+        RECIBIDO
+    }
+
     class ValidacionCampo {
         <<value object>>
         -Integer minLength
@@ -85,6 +90,18 @@ classDiagram
         +abrirVotacion() void
         +cerrarVotacion() void
         +oficializarOferta() void
+    }
+
+    class VotoConfirmacion {
+        -UUID idVotoConfirmacion
+        -int idEleccion
+        -String votanteHash
+        -UUID idempotencyKey
+        -String payloadHash
+        -String comprobanteHash
+        -VotoConfirmacionEstado estado
+        -DateTime recibidoEn
+        +esIdempotenteCon(otro VotoConfirmacion) boolean
     }
 
     class ConfiguracionComicio {
@@ -191,6 +208,7 @@ classDiagram
     Eleccion "1" *-- "1" ConfiguracionComicio : configura
     Eleccion "1" *-- "1" Boleta : publica
     Eleccion "1" *-- "0..1" ConfiguracionDatosCandidato : define campos
+    Eleccion "1" -- "0..*" VotoConfirmacion : registra
     Boleta "1" *-- "1..*" Categoria : organiza roles
     Boleta "1" *-- "0..*" Lista : contiene
     Lista "1" *-- "0..*" Candidato : compone
@@ -204,10 +222,12 @@ classDiagram
     Categoria ..> ResultadoValidacionMinimos : define mínimos
     Eleccion --> EleccionEstado : estado
     Eleccion --> TipoVotacion : modalidad
+    VotoConfirmacion --> VotoConfirmacionEstado : estado
     ConfiguracionComicio --> MetodoAutenticacion : acceso votantes
     ConfiguracionComicio --> PoliticaRevoto : revoto
 
     note for Eleccion "US-316: inicializarEnBorrador() crea el proceso\nen capa relacional sin despliegue blockchain.\nUS-319: oficializarOferta() bloqueada si alguna\nlista no alcanza minimoPostulantes por categoría."
+    note for VotoConfirmacion "US-355: recepción off-chain de BUD;\nsolo hashes + idempotencia, sin selección en claro.\nUnicidad por (eleccion, votanteHash) y\n(eleccion, idempotencyKey)."
     note for Categoria "cantidadCargos = máximo de postulantes;\nminimoPostulantes = mínimo por rol (US-319)."
     note for ConfiguracionComicio "US-316: debe existir al menos un\nmétodo de autenticación activo."
     note for Lista "US-318: post-oficialización congela listId\ny bloquea modificaciones.\nUS-319: cumpleMinimosCandidatos() compara\ncandidatos por categoría contra cupos."
