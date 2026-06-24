@@ -19,6 +19,15 @@ diagramas/
 
 ---
 
+## 2026-06-24 — sprint-1 (US-313 — Login Autoridad Electoral)
+
+- **Tipo de cambio**: materialización off-chain de `AUTORIDAD_ELECTORAL` y `AUDIT_LOG` (ya definidas en DER Sprint 1); flujo de autenticación Autogestión UTN → JWT con claim `role=election_admin`; auditoría `ACCESO_DENEGADO` en 403.
+- **Motivo**: US-313 — Login de la Autoridad Electoral con validación institucional, protección RBAC del Panel de Gestión y registro de intentos no autorizados.
+- **Archivos de código**: módulos `auth` y `audit` en `back`; integración frontend en `front` (login, guards, Bearer).
+- **Diagramas**: sin nueva versión de `.mmd`/`.c4` (DER Sprint 1 ya contemplaba las entidades).
+
+---
+
 ## 2026-06-24 — sprint-1 (US-355 — Boleta Única Digital / confirmación off-chain)
 
 - **Tipo de cambio**: nueva entidad `VOTO_CONFIRMACION` en DER; extensión del modelo de análisis y C4 con módulo BUD de confirmación.
