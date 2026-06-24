@@ -19,6 +19,14 @@ diagramas/
 
 ---
 
+## 2026-06-24 — sprint-1/votar.c4 (US-313 — cierre UAT frontend y auth)
+
+- **Tipo de cambio**: actualización de descripciones en C4 Sprint 1 (`adminAuth`, `jwtValidator`, `auditLogger`) para reflejar implementación real US-313 (Autogestión UTN + JWT propio + probe 403 en Panel).
+- **Motivo**: US-313 — alinear diagrama con código tras cierre de UAT-02 (HTTP 403 en red) y documentar desviación interina respecto a OIDC/JWKS.
+- **Archivo modificado**: `sprint-1/votar.c4`
+
+---
+
 ## 2026-06-24 — sprint-1 (US-313 — Login Autoridad Electoral)
 
 - **Tipo de cambio**: materialización off-chain de `AUTORIDAD_ELECTORAL` y `AUDIT_LOG` (ya definidas en DER Sprint 1); flujo de autenticación Autogestión UTN → JWT con claim `role=election_admin`; auditoría `ACCESO_DENEGADO` en 403.
