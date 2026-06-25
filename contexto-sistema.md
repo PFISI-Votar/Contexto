@@ -124,7 +124,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `MerkleRootStore.sol` | Almacena y versiona Merkle Roots publicadas por la autoridad |
 | OZ: `MerkleProof.sol` | Verifica pertenencia al árbol (OpenZeppelin v5) |
 | OZ: `ECDSA.sol` | Recupera firmante del payload del voto (Ley 25.506) |
-| OZ: `AccessControl.sol` | RBAC: `ELECTION_ADMIN_ROLE`, `PAUSER_ROLE`, `MERKLE_UPDATER_ROLE`, `BALLOT_ROLE` |
+| OZ: `AccessControl.sol` | RBAC vía `VotarAccessControl`: `DEFAULT_ADMIN_ROLE`, `PAUSER_ROLE`, `MERKLE_UPDATER_ROLE`, `BALLOT_ROLE` (US-349) |
 | OZ: `Pausable.sol` | Circuit breaker en `castVote()` |
 
 ---
