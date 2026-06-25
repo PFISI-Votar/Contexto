@@ -19,6 +19,16 @@ diagramas/
 
 ---
 
+## 2026-06-24 — sprint-1/votar.c4 + contexto-sistema.md (US-349 — RBAC on-chain)
+
+- **Tipo de cambio**: incorporación de `VotarAccessControl.sol` y `AccessControlHarness.sol` en C4 Sprint 1; alineación de roles on-chain a `DEFAULT_ADMIN_ROLE` (Multisig/Governor) en lugar de `ELECTION_ADMIN_ROLE`; actualización de `contexto-sistema.md`.
+- **Motivo**: US-349 — Control de acceso por roles en contratos inteligentes. Base RBAC desplegada y UAT-01..04 verificadas en Sepolia (`0x55d1d115309872C16B9646362C82fFa246F3F652`). Evidencia: `blockchain/docs/US-349-sepolia-uat.md`.
+- **Archivos modificados**:
+  - `sprint-1/votar.c4`
+  - `contexto-sistema.md`
+
+---
+
 ## 2026-06-24 — sprint-1 (US-355 — Boleta Única Digital / confirmación off-chain)
 
 - **Tipo de cambio**: nueva entidad `VOTO_CONFIRMACION` en DER; extensión del modelo de análisis y C4 con módulo BUD de confirmación.
