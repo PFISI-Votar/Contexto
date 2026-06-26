@@ -19,9 +19,16 @@ diagramas/
 
 ---
 
-## 2026-06-24 — sprint-1/votar.c4 + contexto-sistema.md (US-349 — RBAC on-chain)
+## 2026-06-25 — Auth votante BUD (US-312)
 
-- **Tipo de cambio**: incorporación de `VotarAccessControl.sol` y `AccessControlHarness.sol` en C4 Sprint 1; alineación de roles on-chain a `DEFAULT_ADMIN_ROLE` (Multisig/Governor) en lugar de `ELECTION_ADMIN_ROLE`; actualización de `contexto-sistema.md`.
+- **Tipo de cambio**: flujo de autenticación del votante en BUD vía BFF Autogestión UTN; JWT `role=voter` en cookie HttpOnly separada (`votar_voter_access_token`), TTL 30 min, sin refresh; endpoint público `GET /elecciones/:id/configuracion-bud`.
+- **Motivo**: US-312 — Login del Votante vía SSO. Endpoints `/auth/votante/login|me|logout`; protección de votación vía JWT en lugar de `x-votante-token`.
+- **Archivos modificados**:
+  - `sprint-1/votar.c4`
+
+---
+
+## 2026-06-25 — Control de acceso on-chain (US-349)
 - **Motivo**: US-349 — Control de acceso por roles en contratos inteligentes. Base RBAC desplegada y UAT-01..04 verificadas en Sepolia (`0x55d1d115309872C16B9646362C82fFa246F3F652`). Evidencia: `blockchain/docs/US-349-sepolia-uat.md`.
 - **Archivos modificados**:
   - `sprint-1/votar.c4`
