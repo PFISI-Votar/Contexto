@@ -1,0 +1,427 @@
+%% ============================================================================
+%% DIAGRAMA DE ENTIDAD-RELACIÓN — Plataforma VOTAR
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09
+%% ============================================================================
+%% Capa de persistencia: PostgreSQL 16 (off-chain)
+%% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
+%% ============================================================================
+%% NOTA: Los campos 'estado' se implementarán como tipos ENUM de PostgreSQL
+%% para garantizar la integridad de datos y evitar anomalías de inserción.
+%% ============================================================================
+
+erDiagram
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% NÚCLEO DEL COMICIO
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    ELECCION {
+        int id_eleccion PK "Identificador único de la elección"
+        string nombre "Nombre descriptivo del comicio (sanitizado en alta)"
+        string descripcion "Descripción del proceso electoral"
+        datetime fecha_inicio "Fecha y hora de apertura del comicio (UTC, futura)"
+        datetime fecha_fin "Fecha y hora de cierre del comicio (UTC, futura > inicio)"
+        string estado "BORRADOR | CONFIGURADA | ABIERTA | CERRADA | ESCRUTADA"
+        string tipo_votacion "POR_CANDIDATO | POR_LISTA | MIXTO — modalidad electoral (US-316)"
+        int minimo_candidatos_por_lista "Legacy/reservado — no usado por US-319; el mínimo vigente es CATEGORIA.minimo_postulantes"
+        datetime fecha_creacion "Timestamp de creación del registro"
+        datetime fecha_actualizacion "Timestamp de última modificación"
+    }
+
+    CONFIGURACION_COMICIO {
+        int id_configuracion PK "Identificador único de la configuración"
+        int id_eleccion FK, UK "Relación 1:1 con la elección"
+        boolean permitir_voto_en_blanco "Habilita la opción de voto en blanco"
+        boolean permitir_voto_multiple "Habilita re-voto (último voto cuenta)"
+        int max_votos_por_votante "Cantidad máxima de votos permitidos (1..N)"
+        int min_intervalo_segundos "Tiempo mínimo entre re-votos"
+        boolean mostrar_resultados_tiempo_real "Muestra resultados parciales en vivo"
+        int duracion_minutos "Duración total del comicio en minutos"
+        string[] metodos_autenticacion "GOOGLE | SSO_INSTITUCIONAL — mín. 1 activo (US-316)"
+        string politica_revoto "LAST_VOTE_WINS | DISABLED"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% BOLETA Y ESTRUCTURA ELECTORAL
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    BOLETA {
+        int id_boleta PK "Identificador único de la boleta"
+        int id_eleccion FK, UK "Relación 1:1 con la elección"
+        string titulo "Título de la boleta electoral"
+        datetime fecha_publicacion "Fecha de publicación/oficialización"
+        string estado "BORRADOR | PUBLICADA | CERRADA"
+    }
+
+    CATEGORIA {
+        int id_categoria PK "Identificador único de la categoría / rol"
+        int id_boleta FK "Boleta a la que pertenece"
+        string nombre "Nombre del rol de candidato (ej: Presidente)"
+        string descripcion "Descripción del rol"
+        int cantidad_cargos "Máximo de postulantes permitidos para el rol en la lista"
+        int minimo_postulantes "Mínimo de postulantes por rol en cada lista (US-319). Al oficializar se valida contando CANDIDATO por (id_lista, id_categoria)"
+        int orden "Orden de visualización en la boleta"
+    }
+
+    LISTA {
+        int id_lista PK "Identificador único de la lista"
+        int id_boleta FK "Boleta a la que pertenece"
+        string nombre "Nombre completo de la lista"
+        string sigla "Sigla o abreviatura"
+        string color "Color identificativo (hex)"
+        datetime fecha_oficializacion "Fecha de oficialización"
+        string estado "BORRADOR | OFICIALIZADA | INHABILITADA"
+        int list_id "Identificador congelado post-oficialización para Web3/BUD (UNIQUE por boleta)"
+    }
+
+    CANDIDATO {
+        int id_candidato PK "Identificador único del candidato"
+        int id_lista FK "Lista a la que pertenece"
+        int id_categoria FK "Rol/categoría al que postula"
+        string nombre "Nombre del candidato"
+        string apellido "Apellido del candidato"
+        int orden "Orden en la lista"
+        string foto_url "URL de la foto del candidato"
+        json datos_adicionales "Valores de campos dinámicos por candidato (JSONB — US-318)"
+    }
+
+    CONFIGURACION_DATOS_CANDIDATO {
+        int id_configuracion PK "Identificador de la configuración de campos"
+        int id_eleccion FK, UK "Relación 1:1 con la elección"
+        datetime fecha_creacion "Timestamp de creación"
+        datetime fecha_actualizacion "Timestamp de última modificación"
+    }
+
+    CAMPO_DATOS_CANDIDATO {
+        int id_campo PK "Identificador del campo definido"
+        int id_configuracion FK "Configuración a la que pertenece"
+        string clave UK "Clave técnica del campo (única por configuración)"
+        string etiqueta "Etiqueta visible en formularios"
+        string tipo "texto | numero | email | url | fecha | booleano"
+        boolean obligatorio "Si el campo es requerido al registrar candidato"
+        string ejemplo "Valor de ejemplo opcional"
+        string ayuda "Texto de ayuda opcional"
+        int orden UK "Orden de visualización (único por configuración)"
+        int min_length "Longitud mínima (texto)"
+        int max_length "Longitud máxima (texto)"
+        float min_valor "Valor mínimo (numero)"
+        float max_valor "Valor máximo (numero)"
+        string pattern "Expresión regular opcional"
+        string pattern_message "Mensaje de error del patrón"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% PADRÓN ELECTORAL Y VOTANTES
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    PADRON_ELECTORAL {
+        int id_padron PK "Identificador único del padrón"
+        int id_eleccion FK, UK "Relación 1:1 con la elección"
+        int total_votantes_habilitados "Cantidad total de votantes habilitados"
+        datetime fecha_generacion "Fecha de generación/importación"
+        string hash_padron "Raíz Merkle Keccak-256 del padrón (64 hex, sin 0x). Sello de integridad (VOTAR-334)"
+        string estado "BORRADOR | PUBLICADO | CERRADO"
+        int total_procesados "US-331: filas de datos leídas del CSV"
+        int total_omitidos "US-331: filas omitidas (defectuosas o duplicadas)"
+        jsonb novedades "US-331: reporte de novedades [linea, tipo, motivo] sin PII (Ley 25.326)"
+    }
+
+    VOTANTE {
+        int id_votante PK "Identificador único del votante"
+        string email_institucional UK "Email institucional (SSO)"
+        string identificador_sso "Identificador único del SSO/OIDC"
+        boolean habilitado "Indica si está habilitado para votar"
+        boolean ha_votado "Indica si ya emitió al menos un voto"
+        datetime ultimo_acceso "Timestamp del último acceso"
+        datetime fecha_registro "Fecha de registro en el sistema"
+    }
+
+    PADRON_VOTANTE {
+        uuid id_padron_votante PK "Identificador de la relación"
+        uuid id_padron FK "Padrón al que pertenece (UNIQUE compuesta con hash_hoja)"
+        int indice_hoja "Índice canónico en el Árbol de Merkle (orden lexicográfico de hash_hoja — VOTAR-334)"
+        string hash_hoja "Keccak-256 hex (64 chars) del votante = votanteHash. Anonimización Ley 25.326 — NO se persiste DNI plano. INDEXED."
+        datetime generado_en "Timestamp de inserción (auditoría US 330)"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% ÁRBOL DE MERKLE (Persistencia off-chain)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    MERKLE_TREE {
+        int id_merkle_tree PK "Identificador único del árbol"
+        int id_padron FK, UK "Padrón del que se genera (1:1 en consolidación inicial)"
+        string merkle_root "Raíz Merkle bytes32 (66 hex con prefijo 0x)"
+        int total_hojas "Cantidad total de hojas"
+        int version "Versión del árbol (incrementa con regeneraciones)"
+        datetime fecha_generacion "Fecha de generación del árbol"
+        string estado "GENERADO | ACTIVO | PUBLICADO_ON_CHAIN | OBSOLETO"
+        jsonb tree_dump "Dump serializado StandardMerkleTree (VOTAR-334)"
+    }
+
+    %% NOTA VOTAR-334: Los Merkle Proofs NO se persisten por votante.
+    %% Se calculan on-demand desde tree_dump + indice_hoja de PADRON_VOTANTE.
+    %% Migración: AddMerkleTree1782400000000 en votar.back.
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% ACTORES DEL SISTEMA (Usuarios)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    AUTORIDAD_ELECTORAL {
+        int id_autoridad PK "Identificador único de la autoridad"
+        string nombre "Nombre completo"
+        string email_institucional UK "Email institucional"
+        string rol "ELECTION_ADMIN | PAUSER | MERKLE_UPDATER"
+        string identificador_sso "Identificador del SSO/OIDC"
+        datetime fecha_registro "Fecha de alta en el sistema"
+    }
+
+    OBSERVADOR {
+        int id_observador PK "Identificador único del observador"
+        string nombre "Nombre completo"
+        string tipo "FISCAL | AUDITOR_PUBLICO | VEEDOR"
+        string email "Email de contacto"
+        datetime fecha_registro "Fecha de alta en el sistema"
+    }
+
+    AUTORIDAD_ELECCION {
+        int id_autoridad_eleccion PK "Identificador de la relación"
+        int id_autoridad FK "Autoridad electoral"
+        int id_eleccion FK "Elección que administra"
+        string rol_en_eleccion "Rol específico en esta elección"
+    }
+
+    OBSERVADOR_ELECCION {
+        int id_observador_eleccion PK "Identificador de la relación"
+        int id_observador FK "Observador"
+        int id_eleccion FK "Elección que observa"
+        datetime fecha_asignacion "Fecha de asignación"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% SMART CONTRACT (Referencia off-chain al despliegue on-chain)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    SMART_CONTRACT_ELECCION {
+        int id_contrato PK "Identificador interno del contrato"
+        int id_eleccion FK, UK "Elección asociada"
+        string direccion_contrato UK "Address del contrato en la blockchain"
+        string merkle_root_almacenada "Merkle Root publicada on-chain"
+        string estado "DESPLEGADO | ACTIVO | PAUSADO | FINALIZADO"
+        datetime fecha_despliegue "Fecha de despliegue en la testnet"
+        string abi_hash "Hash del ABI del contrato"
+        string red "SEPOLIA | MAINNET"
+        string tx_hash_despliegue "Hash de la transacción de despliegue"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% VOTO ANÓNIMO Y CAPA CRIPTOGRÁFICA
+    %% (Datos que NO vinculan identidad con sufragio - Ley 25.326)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    VOTO {
+        int id_voto PK "Identificador interno del voto"
+        int id_eleccion FK "Elección a la que pertenece"
+        int id_billetera FK "Billetera efímera que firmó este voto"
+        string hash_voto UK "Hash SHA-256 del contenido del voto"
+        string firma "Firma ECC del voto con billetera efímera"
+        string nullifier UK "Nullifier derivado (unicidad sin identidad)"
+        datetime fecha_emision "Timestamp de emisión"
+        string tipo "NORMAL | EN_BLANCO"
+        boolean computado "Si fue incluido en el escrutinio final"
+        boolean es_ultimo "Si es el último voto vigente (re-voto)"
+    }
+
+    VOTO_DETALLE {
+        int id_voto_detalle PK "Identificador del detalle"
+        int id_voto FK "Voto al que pertenece"
+        int id_categoria FK "Categoría votada"
+        int id_candidato FK "Candidato seleccionado (null si voto en blanco)"
+    }
+
+    %% Capa off-chain BUD: recepción e idempotencia sin selección en claro.
+    %% No reemplaza al VOTO anónimo ni persiste candidatos seleccionados.
+    %% Restricciones: UNIQUE(id_eleccion, votante_hash) y UNIQUE(id_eleccion, idempotency_key).
+    VOTO_CONFIRMACION {
+        uuid id_voto_confirmacion PK "Identificador de la confirmación off-chain (US BUD)"
+        int id_eleccion FK "Comicio confirmado"
+        string votante_hash "Hash de sesión/padrón (64 hex). Anti doble voto pre-chain"
+        uuid idempotency_key "Clave idempotente del cliente"
+        string payload_hash "SHA-256 del payload confirmado (sin selección en claro)"
+        string comprobante_hash "SHA-256 del comprobante devuelto al votante"
+        string estado "RECIBIDO"
+        datetime recibido_en "Timestamp de recepción"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% TRANSACCIONES BLOCKCHAIN (Registro off-chain de txs on-chain)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    TRANSACCION_BLOCKCHAIN {
+        int id_transaccion PK "Identificador interno de la transacción"
+        int id_voto FK, UK "Voto asociado a esta transacción"
+        string hash_transaccion UK "Hash de la transacción en la blockchain"
+        int numero_bloque "Número del bloque en la cadena"
+        datetime timestamp "Timestamp del bloque"
+        string estado "PENDIENTE | CONFIRMADA | FALLIDA"
+        int gas_usado "Gas consumido por la transacción"
+        string direccion_contrato "Address del contrato destino"
+    }
+
+    RECIBO_VOTACION {
+        int id_recibo PK "Identificador interno del recibo"
+        int id_transaccion FK, UK "Transacción asociada"
+        string hash_voto "Hash del voto emitido"
+        datetime fecha_emision "Fecha de emisión del recibo"
+        string codigo_verificacion UK "Código para verificación E2E"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% BILLETERA EFÍMERA (sin FK permanente al Votante)
+    %% Generada client-side tras validar MerkleProof, destruida post-voto.
+    %% La clave privada NUNCA se persiste en la BD (ni siquiera encriptada).
+    %% Se genera en el navegador del votante (Web Crypto API), firma el
+    %% payload del voto y se destruye de la RAM del dispositivo.
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    BILLETERA_EFIMERA {
+        int id_billetera PK "Identificador interno"
+        string clave_publica UK "Clave pública ECC (hex)"
+        datetime fecha_creacion "Fecha de generación"
+        datetime fecha_expiracion "Fecha de expiración automática"
+        string estado "ACTIVA | USADA | DESTRUIDA | EXPIRADA"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% MOTOR OFF-CHAIN (Registro de Nullifiers para prevenir doble voto)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    REGISTRO_NULLIFIER {
+        int id_registro PK "Identificador del registro"
+        int id_eleccion FK "Elección asociada"
+        string nullifier UK "Nullifier derivado (hash)"
+        string hash_voto_vigente "Hash del último voto válido"
+        datetime fecha_primera_emision "Fecha del primer voto con este nullifier"
+        datetime fecha_ultima_emision "Fecha del último re-voto"
+        int cantidad_emisiones "Cantidad de veces que se votó con este nullifier"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% AUDITORÍA Y TRAZABILIDAD
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    AUDIT_LOG {
+        int id_log PK "Identificador del registro de auditoría"
+        int id_eleccion FK "Elección asociada"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | CONTRATO_DESPLEGADO"
+        datetime timestamp "Timestamp del evento"
+        string actor "Identificador del actor (autoridad/sistema)"
+        string descripcion "Descripción del evento"
+        string hash_registro "Hash del registro para integridad"
+        string ip_origen "IP de origen del evento"
+        string datos_adicionales "JSON con datos extra del evento"
+    }
+
+    ACTIVIDAD_ELECTORAL {
+        int id_actividad PK "Identificador de la actividad"
+        int id_eleccion FK "Elección asociada"
+        string tipo "APERTURA | CIERRE | PAUSA | ESCRUTINIO | PUBLICACION_RESULTADOS"
+        datetime timestamp "Timestamp de la actividad"
+        string descripcion "Descripción de la actividad"
+        string ejecutado_por "Identificador de quien ejecutó la acción"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% REPORTES INSTITUCIONALES
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    REPORTE_INSTITUCIONAL {
+        int id_reporte PK "Identificador del reporte"
+        int id_eleccion FK "Elección asociada"
+        int id_autoridad FK "Autoridad que solicitó el reporte"
+        string tipo "ACTA_APERTURA | ACTA_CIERRE | PADRON | PARTICIPACION | RESULTADOS"
+        datetime fecha_generacion "Fecha de generación"
+        string contenido "Contenido del reporte o ruta al archivo"
+        string formato "PDF | JSON | CSV"
+        string hash_contenido "Hash del contenido para verificar integridad"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% RESULTADOS DEL ESCRUTINIO (Agregado off-chain)
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    RESULTADO_ELECCION {
+        int id_resultado PK "Identificador del resultado"
+        int id_eleccion FK "Elección asociada"
+        int id_categoria FK "Categoría del resultado"
+        int id_candidato FK "Candidato (null para votos en blanco)"
+        int id_lista FK "Lista del candidato"
+        int cantidad_votos "Total de votos computados"
+        float porcentaje "Porcentaje sobre votos válidos"
+        datetime fecha_computo "Fecha del cómputo"
+        boolean es_resultado_final "Si es resultado definitivo"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% RELACIONES
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    %% --- Núcleo del comicio ---
+    ELECCION ||--|| CONFIGURACION_COMICIO : "configura"
+    ELECCION ||--|| BOLETA : "publica"
+    ELECCION ||--|| PADRON_ELECTORAL : "habilita"
+    ELECCION ||--|| SMART_CONTRACT_ELECCION : "despliega"
+
+    %% --- Estructura de la boleta ---
+    BOLETA ||--|{ CATEGORIA : "organiza"
+    BOLETA ||--|{ LISTA : "contiene"
+    LISTA ||--|{ CANDIDATO : "compone"
+    CATEGORIA ||--o{ CANDIDATO : "clasifica"
+    ELECCION ||--|| CONFIGURACION_DATOS_CANDIDATO : "define campos candidato"
+    CONFIGURACION_DATOS_CANDIDATO ||--|{ CAMPO_DATOS_CANDIDATO : "compone"
+
+    %% --- Padrón y votantes ---
+    %% VOTAR-334: consolidación criptográfica al importar CSV. 1:1 padron↔merkle_tree
+    %% en la versión inicial; version permite historial futuro de regeneraciones.
+    PADRON_ELECTORAL ||--|| MERKLE_TREE : "consolida (sello Merkle)"
+    PADRON_ELECTORAL ||--|{ PADRON_VOTANTE : "incluye (anonimizado por hash)"
+    %% NOTA Sprint 1 (US 330): se elimina la FK VOTANTE → PADRON_VOTANTE.
+    %% PADRON_VOTANTE ya no referencia identidad civil; sólo persiste hash Keccak-256.
+
+    %% --- Actores y elecciones (muchos a muchos) ---
+    AUTORIDAD_ELECTORAL ||--|{ AUTORIDAD_ELECCION : "tiene asignaciones"
+    ELECCION ||--|{ AUTORIDAD_ELECCION : "administrada por"
+    OBSERVADOR ||--o{ OBSERVADOR_ELECCION : "tiene asignaciones"
+    ELECCION ||--o{ OBSERVADOR_ELECCION : "observada por"
+
+    %% --- Votos anónimos (SIN FK a Votante — Ley 25.326) ---
+    ELECCION ||--o{ VOTO : "recibe"
+    ELECCION ||--o{ VOTO_CONFIRMACION : "registra confirmaciones BUD"
+    VOTO ||--|{ VOTO_DETALLE : "contiene"
+    VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
+    VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
+
+    %% --- Cadena criptográfica del voto ---
+    VOTO ||--|| TRANSACCION_BLOCKCHAIN : "produce"
+    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "emite"
+
+    %% --- Billetera efímera (sin FK permanente a Votante) ---
+    BILLETERA_EFIMERA ||--o{ VOTO : "firma"
+
+    %% --- Registro de nullifiers (motor off-chain) ---
+    ELECCION ||--o{ REGISTRO_NULLIFIER : "registra nullifiers"
+
+    %% --- Auditoría y trazabilidad ---
+    ELECCION ||--o{ AUDIT_LOG : "registra eventos"
+    ELECCION ||--o{ ACTIVIDAD_ELECTORAL : "traza"
+
+    %% --- Reportes ---
+    ELECCION ||--o{ REPORTE_INSTITUCIONAL : "genera"
+    AUTORIDAD_ELECTORAL ||--o{ REPORTE_INSTITUCIONAL : "solicita"
+
+    %% --- Resultados ---
+    ELECCION ||--o{ RESULTADO_ELECCION : "computa"
+    CATEGORIA ||--o{ RESULTADO_ELECCION : "tiene resultados"
+    CANDIDATO ||--o{ RESULTADO_ELECCION : "acumula votos"
+    LISTA ||--o{ RESULTADO_ELECCION : "tiene resultados"

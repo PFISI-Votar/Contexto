@@ -15,7 +15,17 @@ diagramas/
     ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
     ├── Diagrama de clases - Sprint 1 - PFISI.mmd
     └── votar.c4
+└── sprint-2/
+    └── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
 ```
+
+---
+
+## 2026-06-26 — sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd (VOTAR-334)
+
+- **Tipo de cambio**: implementación de `MERKLE_TREE` con `tree_dump` (jsonb); `hash_padron` pasa a ser raíz Merkle Keccak-256; `indice_hoja` en orden canónico lexicográfico; relación 1:1 `PADRON_ELECTORAL`↔`MERKLE_TREE`.
+- **Motivo**: VOTAR-334 — Consolidación criptográfica de votantes habilitados. Proofs calculadas on-demand desde `tree_dump` (decisión híbrida). Migración `AddMerkleTree1782400000000` en `votar.back`.
+- **Archivo nuevo**: `sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
 
 ---
 
