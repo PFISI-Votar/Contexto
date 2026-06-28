@@ -285,7 +285,7 @@ model {
       electionFactory = component "ElectionFactory.sol" {
         #web3
         technology "Solidity / UUPS Proxy Factory"
-        description "Despliega y registra instancias de BallotContract + VoteRegistry + TallyContract + AuditView por comicio. Recibe struct RevoteConfig{bool enabled; uint16 maxVotesPerVoter; uint32 minIntervalSeconds; TallyPolicy policy} en createElection() e inmutabiliza la política tras apertura. Solo ELECTION_ADMIN_ROLE. Emite ElectionCreated(electionId, ballot, tally, revoteConfig)"
+        description "Despliega y registra instancias de BallotContract + VoteRegistry + TallyContract + AuditView por comicio. Recibe struct RevoteConfig{bool enabled; uint16 maxVotesPerVoter; uint32 minIntervalSeconds; TallyPolicy policy} en createElection() e inmutabiliza la política tras apertura. Solo DEFAULT_ADMIN_ROLE (Multisig). Emite ElectionCreated(electionId, ballot, tally, revoteConfig)"
       }
 
       // ── Contrato de Votación Principal ──────────────────────────────
@@ -333,6 +333,19 @@ model {
         description "Almacena y versiona Merkle Roots publicadas por la autoridad (MERKLE_UPDATER_ROLE). Mapping: electionId => bytes32 root + timestamp. Inmutable tras apertura del comicio. Emite RootPublished(electionId, root)"
       }
 
+      // ── Base RBAC (US-349 — implementado) ───────────────────────────
+      votarAccessControl = component "VotarAccessControl.sol" {
+        #web3 #security
+        technology "Solidity ^0.8.24 / OpenZeppelin AccessControl + Pausable"
+        description "Base abstracta RBAC del ecosistema (US-349). Roles: DEFAULT_ADMIN_ROLE (Multisig/Governor al deploy), PAUSER_ROLE, MERKLE_UPDATER_ROLE, BALLOT_ROLE. Constructor asigna admin; grant/revoke emite RoleGranted/RoleRevoked. Desplegado en Sepolia vía AccessControlHarness para UAT. Contratos electorales futuros heredan esta base"
+      }
+
+      accessControlHarness = component "AccessControlHarness.sol" {
+        #web3 #security
+        technology "Solidity / mock de integración"
+        description "Contrato concreto de prueba US-349: hereda VotarAccessControl y expone updateMerkleRoot (MERKLE_UPDATER_ROLE) y recordBallotOp (BALLOT_ROLE + whenNotPaused). Sepolia: 0x55d1d115309872C16B9646362C82fFa246F3F652"
+      }
+
       // ── Librería OZ: MerkleProof ─────────────────────────────────────
       ozMerkleProof = ozlibrary "OZ: MerkleProof.sol" {
         #openzeppelin
@@ -353,7 +366,7 @@ model {
       ozAccessControl = ozlibrary "OZ: AccessControl.sol" {
         #openzeppelin #security
         technology "OpenZeppelin v5 / Solidity Library"
-        description "RBAC: ELECTION_ADMIN_ROLE (autoridad), PAUSER_ROLE (emergencia), MERKLE_UPDATER_ROLE (publicación raíz), BALLOT_ROLE (escritura en VoteRegistry/Tally). Hereda AccessControlDefaultAdminRules"
+        description "Librería base RBAC de OpenZeppelin. VotarAccessControl la extiende con roles PAUSER, MERKLE_UPDATER y BALLOT; DEFAULT_ADMIN_ROLE centraliza grant/revoke hacia Multisig/Governor"
       }
 
       // ── Librería OZ: Pausable ────────────────────────────────────────
@@ -447,7 +460,7 @@ model {
   votar.dashboard.localVerifier -> votar.dashboard.blockScanner "Valida prueba contra raíz on-chain"
 
   // RPC -> Smart Contracts
-  rpc -> votar.contracts.electionFactory "Proxy para createElection() (ELECTION_ADMIN_ROLE)"
+  rpc -> votar.contracts.electionFactory "Proxy para createElection() (DEFAULT_ADMIN_ROLE)"
   rpc -> votar.contracts.ballotContract "Proxy para castVote() y lecturas de estado"
   rpc -> votar.contracts.merkleRootStore "Proxy para publishRoot() (MERKLE_UPDATER_ROLE)"
   rpc -> votar.contracts.tallyContract "Lecturas view del escrutinio para Dashboard"
@@ -458,6 +471,11 @@ model {
   votar.contracts.electionFactory -> votar.contracts.voteRegistry "Despliega VoteRegistry asociado"
   votar.contracts.electionFactory -> votar.contracts.tallyContract "Despliega TallyContract asociado"
   votar.contracts.electionFactory -> votar.contracts.auditViewContract "Despliega AuditView asociado"
+  votar.contracts.electionFactory -> votar.contracts.votarAccessControl "Hereda RBAC; asigna DEFAULT_ADMIN_ROLE al Multisig en deploy"
+  votar.contracts.ballotContract -> votar.contracts.votarAccessControl "Hereda VotarAccessControl (futuro)"
+  votar.contracts.accessControlHarness -> votar.contracts.votarAccessControl "Hereda base RBAC (UAT Sepolia US-349)"
+  votar.contracts.votarAccessControl -> votar.contracts.ozAccessControl "Extiende AccessControl OZ v5"
+  votar.contracts.votarAccessControl -> votar.contracts.ozPausable "Extiende Pausable; pause/unpause con PAUSER_ROLE"
   votar.contracts.electionFactory -> votar.contracts.ozAccessControl "Configura roles iniciales en deployment"
 
   votar.contracts.ballotContract -> votar.contracts.merkleRootStore "Consulta Merkle Root activa en castVote()"
