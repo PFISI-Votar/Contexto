@@ -120,7 +120,7 @@ erDiagram
         int id_eleccion FK, UK "Relación 1:1 con la elección"
         int total_votantes_habilitados "Cantidad total de votantes habilitados"
         datetime fecha_generacion "Fecha de generación/importación"
-        string hash_padron "Hash SHA-256 del padrón completo"
+        string hash_padron "Raíz Merkle Keccak-256 del padrón (64 hex, sin 0x). Sello de integridad (VOTAR-334)"
         string estado "BORRADOR | PUBLICADO | CERRADO"
         int total_procesados "US-331: filas de datos leídas del CSV"
         int total_omitidos "US-331: filas omitidas (defectuosas o duplicadas)"
@@ -140,7 +140,7 @@ erDiagram
     PADRON_VOTANTE {
         uuid id_padron_votante PK "Identificador de la relación"
         uuid id_padron FK "Padrón al que pertenece (UNIQUE compuesta con hash_hoja)"
-        int indice_hoja "Índice de la hoja en el Árbol de Merkle (secuencial por import)"
+        int indice_hoja "Índice canónico en el Árbol de Merkle (orden lexicográfico de hash_hoja — VOTAR-334)"
         string hash_hoja "Keccak-256 hex (64 chars) del votante = votanteHash. Anonimización Ley 25.326 — NO se persiste DNI plano. INDEXED."
         datetime generado_en "Timestamp de inserción (auditoría US 330)"
     }
@@ -151,22 +151,26 @@ erDiagram
 
     MERKLE_TREE {
         int id_merkle_tree PK "Identificador único del árbol"
-        int id_padron FK "Padrón del que se genera"
-        string merkle_root "Raíz del árbol de Merkle (hash hex)"
+        int id_padron FK, UK "Padrón del que se genera (1:1 en consolidación inicial)"
+        string merkle_root "Raíz Merkle bytes32 (66 hex con prefijo 0x)"
         int total_hojas "Cantidad total de hojas"
         int version "Versión del árbol (incrementa con regeneraciones)"
         datetime fecha_generacion "Fecha de generación del árbol"
         string estado "GENERADO | ACTIVO | PUBLICADO_ON_CHAIN | OBSOLETO"
+        jsonb tree_dump "Dump serializado StandardMerkleTree (VOTAR-334)"
         string tx_hash_publicacion "Hash tx Sepolia (US-335)"
         int numero_bloque "Bloque de confirmación on-chain"
         datetime fecha_publicacion_on_chain "Timestamp publicación on-chain"
         string direccion_contrato "Address MerkleRootStore compartido (interim US-335)"
     }
 
-    %% NOTA: Los Merkle Proofs NO se persisten en la base de datos.
-    %% Son datos derivados que se calculan en tiempo de ejecución por el
-    %% Backend API a partir del MERKLE_TREE y PADRON_VOTANTE bajo demanda.
-    %% Esto evita almacenar N registros JSON innecesarios (uno por votante).
+    %% NOTA VOTAR-334: Los Merkle Proofs NO se persisten por votante.
+    %% Se calculan on-demand desde tree_dump + indice_hoja de PADRON_VOTANTE.
+    %% Migración: AddMerkleTree1782400000000 en votar.back.
+    %% NOTA US-335: hasta US-337 el contrato MerkleRootStore es compartido
+    %% (una address global); merkle_root_almacenada en SMART_CONTRACT_ELECCION
+    %% queda reservada para despliegue per-comicio. La publicación actual
+    %% persiste tx_hash y direccion_contrato en MERKLE_TREE.
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% ACTORES DEL SISTEMA (Usuarios)
@@ -218,11 +222,6 @@ erDiagram
         string red "SEPOLIA | MAINNET"
         string tx_hash_despliegue "Hash de la transacción de despliegue"
     }
-
-    %% NOTA US-335: hasta US-337 el contrato MerkleRootStore es compartido
-    %% (una address global); merkle_root_almacenada en SMART_CONTRACT_ELECCION
-    %% queda reservada para despliegue per-comicio. La publicación actual
-    %% persiste tx_hash y direccion_contrato en MERKLE_TREE.
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% VOTO ANÓNIMO Y CAPA CRIPTOGRÁFICA
@@ -391,9 +390,9 @@ erDiagram
     CONFIGURACION_DATOS_CANDIDATO ||--|{ CAMPO_DATOS_CANDIDATO : "compone"
 
     %% --- Padrón y votantes ---
-    %% Un padrón puede tener múltiples árboles de Merkle (historial de
-    %% regeneraciones). Solo uno estará en estado ACTIVO/PUBLICADO_ON_CHAIN.
-    PADRON_ELECTORAL ||--|{ MERKLE_TREE : "genera"
+    %% VOTAR-334: consolidación criptográfica al importar CSV. 1:1 padron↔merkle_tree
+    %% en la versión inicial; version permite historial futuro de regeneraciones.
+    PADRON_ELECTORAL ||--|| MERKLE_TREE : "consolida (sello Merkle)"
     PADRON_ELECTORAL ||--|{ PADRON_VOTANTE : "incluye (anonimizado por hash)"
     %% NOTA Sprint 1 (US 330): se elimina la FK VOTANTE → PADRON_VOTANTE.
     %% PADRON_VOTANTE ya no referencia identidad civil; sólo persiste hash Keccak-256.

@@ -1,0 +1,227 @@
+{
+  "exportedAt": "2026-06-26T23:54:09.076Z",
+  "project": {
+    "key": "VOTAR",
+    "name": "PFISI",
+    "url": "https://fivestack.atlassian.net/jira/software/projects/VOTAR/boards/1"
+  },
+  "sprint": {
+    "id": 103,
+    "name": "Sprint 2",
+    "state": "future",
+    "boardId": 1,
+    "goal": null,
+    "startDate": "2026-06-29T23:22:00.000Z",
+    "endDate": "2026-07-13T03:30:00.000Z"
+  },
+  "totalTickets": 9,
+  "tickets": [
+    {
+      "key": "VOTAR-333",
+      "id": "10640",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-333",
+      "summary": "Publicación del total del padrón",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "High",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "gestion-del-padron-electoral",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-303",
+        "summary": "Épica 4 — Gestión del Padrón Electoral"
+      },
+      "created": "2026-05-24T20:42:46.154-0300",
+      "updated": "2026-06-09T20:30:13.195-0300",
+      "description": "**Como** Auditor **quiero** visualizar de forma pública el número total de votantes habilitados antes del inicio del comicio **para** validar el tamaño del padrón y asegurar la transparencia estadística del proceso. \n\n## Criterios de aceptación\n\n* **Exposición pública del volumen del padrón**: Dado que un ciudadano o auditor externo ingresa a la vista del Dashboard de un comicio configurado, cuando el sistema renderiza la interfaz, entonces consulta y expone el campo numérico del total de votantes habilitados (totalVoters) directamente en la sección pública, asegurando que esta métrica sea inmutable una vez consolidada.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Inspección de total de habilitados pre-apertura: El usuario accederá al Dashboard público de una elección que está en fase de preparación. El resultado esperado es que la pantalla principal exponga con claridad el mensaje de total de votantes habilitados con el número de registros importados y consolidados previamente por la autoridad.\n* **UAT-02**: Coherencia temporal del padrón consolidado: El auditor consultará el total de votantes habilitados en el Dashboard antes de la apertura, durante el transcurso del comicio y tras su cierre. El resultado esperado es que el indicador muestre de forma consistente exactamente el mismo número en las tres fases del ciclo de vida, demostrando el sellado de integridad sobre las variables de tamaño del electorado.\n\n"
+    },
+    {
+      "key": "VOTAR-334",
+      "id": "10641",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-334",
+      "summary": "Consolidación criptográfica de votantes habilitados",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "Highest",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "gestion-del-padron-electoral",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-303",
+        "summary": "Épica 4 — Gestión del Padrón Electoral"
+      },
+      "created": "2026-05-24T20:42:46.823-0300",
+      "updated": "2026-06-09T20:29:18.303-0300",
+      "description": "**Como** Autoridad Electoral **quiero** que el sistema genere un sello de integridad del padrón y credenciales de validación individuales para cada elector, **para** garantizar la inmutabilidad de la lista de votantes y permitir una verificación de identidad privada y segura al momento de emitir el voto.\n\n## Criterios de aceptación\n\n* **Construcción de estructura criptográfica (Árbol de Merkle):** Dado que la autoridad electoral consolida el padrón importado, cuando el backend procesa el conjunto de hashes de los votantes, entonces debe construir un árbol de Merkle de forma determinística utilizando la función hash Keccak-256.\n* **Generación de Raíz y Pruebas:** El sistema debe arrojar como resultado una única raíz de Merkle que actuará como el sello del comicio, y debe calcular y persistir de forma individual las ramas de validación (proofs) correspondientes a cada elector en la base de datos.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01:** Re-construcción determinística del sello: El auditor ejecutará dos veces el proceso de sellado utilizando exactamente el mismo conjunto de datos del padrón. El resultado esperado es verificar que la raíz generada en ambos procesos sea idéntica carácter por carácter.\n* **UAT-02:** Verificación de credenciales individuales: El auditor seleccionará la prueba de pertenencia (proof) de un elector al azar y constatará mediante un script de validación que la acumulación sucesiva de sus hashes hermanos concluye exactamente en la raíz del comicio generada originalmente.\n\nNOTA: Se eliminaron conceptos técnicos de la descripción y el nombre"
+    },
+    {
+      "key": "VOTAR-335",
+      "id": "10642",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-335",
+      "summary": "Publicación del sello de integridad del padrón en la Blockchain",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "High",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "gestion-del-padron-electoral",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-303",
+        "summary": "Épica 4 — Gestión del Padrón Electoral"
+      },
+      "created": "2026-05-24T20:42:47.388-0300",
+      "updated": "2026-06-09T20:30:02.202-0300",
+      "description": "**Como** Autoridad Electoral **quiero** publicar el sello de integridad del padrón en la red blockchain, **para** anclar de forma pública, inmutable y verificable la lista de electores habilitados antes del inicio de los comicios. \n\n## Criterios de aceptación\n\n* **Anclaje inmutable y validación de permisos de publicación**: Dado que se ha consolidado la raíz de Merkle del padrón, cuando el backend envía la transacción de publicación a Sepolia, entonces el sistema valida que la cuenta esté firmada por un emisor con el rol de actualización adecuado (MERKLE_UPDATER_ROLE), guarda la firma en el contrato inteligente MerkleRootStore y emite el evento público RootPublished en la blockchain.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Publicación confirmada y evento indexado en blockchain: El administrador con la clave autorizada presionará el botón \"Publicar Raíz on-chain\" en el panel. El resultado esperado es que el panel devuelva el hash de transacción de Sepolia, el estado del comicio muestre la raíz guardada y se compruebe en un explorador de bloques que el evento RootPublished se emitió con el ID del comicio y la raíz correctos.\n* **UAT-02**: Rechazo de publicación por emisor no autorizado: Un usuario intentará invocar la función de publicación de raíz utilizando una cuenta de prueba que no posea el rol de actualización en el sistema. El resultado esperado es que el contrato de blockchain aborte la transacción devolviendo un error de falta de permisos, bloqueando cualquier alteración del padrón.\n\nNOTA: Se eliminaron conceptos técnicos de la descripción y nombre"
+    },
+    {
+      "key": "VOTAR-336",
+      "id": "10643",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-336",
+      "summary": "Bloqueo de modificaciones al padrón durante la votación activa",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "High",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "gestion-del-padron-electoral",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-303",
+        "summary": "Épica 4 — Gestión del Padrón Electoral"
+      },
+      "created": "2026-05-24T20:42:48.122-0300",
+      "updated": "2026-06-09T20:30:02.425-0300",
+      "description": "**Como** Auditor **quiero** asegurar que el padrón electoral no pueda modificarse de ninguna forma una vez iniciada la votación, **para** evitar la adición ilegal de electores y garantizar la transparencia del comicio.\n\n## Criterios de aceptación\n\n* **Cierre hermético del padrón activo**: Dado que la elección pasa a estado abierto (OPEN), cuando se intenta llamar a la función publishRoot() del contrato para actualizar la raíz del padrón, entonces el contrato inteligente bloquea de forma absoluta la escritura y revierte la transacción devolviendo la excepción RootLocked.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Intento de re-publicación de raíz en comicio abierto: El usuario técnico intentará enviar una transacción para cambiar la raíz de una elección que ya se encuentra en fase de votación activa. El resultado esperado es que la blockchain rechace la transacción de forma estricta arrojando el error RootLocked, protegiendo la integridad del padrón.\n* **UAT-02**: Bloqueo de cambios en la base de datos de administración: Con el comicio en estado OPEN, el administrador intentará subir un nuevo archivo CSV de padrón electoral en el Panel de Gestión. El resultado esperado es que la interfaz del software bloquee por completo el botón de carga, mostrando una advertencia informativa que especifique que el padrón de electores se encuentra sellado criptográficamente y no admite alteraciones.\n\n"
+    },
+    {
+      "key": "VOTAR-339",
+      "id": "10646",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-339",
+      "summary": "Validación criptográfica de electores en la Blockchain",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "High",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "smart-contracts-despliegue-y-c",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-304",
+        "summary": "Épica 5 — Smart Contracts (despliegue y configuración)"
+      },
+      "created": "2026-05-24T20:42:50.219-0300",
+      "updated": "2026-06-09T20:30:03.521-0300",
+      "description": "**Como** Votante **quiero** que el sistema verifique de forma automática mi habilitación en el padrón electoral al momento de enviar mi voto, **para** asegurar que mi sufragio sea válido y registrado de manera transparente sin depender de la aprobación de un servidor central.\n\n## Criterios de aceptación\n\n* **Validación criptográfica local e inmutable**: Dado que el contrato recibe una transacción con una intención de voto, cuando ejecuta la validación interna, entonces utiliza el componente de verificación criptográfica estandarizado para comprobar la correspondencia de la rama provista contra la raíz de Merkle previamente anclada on-chain, rechazando y revirtiendo la ejecución con la excepción InvalidMerkleProof si se detecta cualquier discrepancia.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Rechazo de voto con prueba de pertenencia manipulada: El usuario intentará emitir un sufragio manipulando de forma intencional uno de los caracteres de su rama de validación (proof) o utilizando la rama de un elector ajeno. El resultado esperado es que el nodo RPC de Sepolia aborte la ejecución de inmediato y la transacción devuelva explícitamente el error de validación InvalidMerkleProof.\n* **UAT-02**: Procesamiento exitoso de voto con prueba de pertenencia legítima: Un votante de prueba enviará su sufragio adjuntando su firma y la prueba de pertenencia de Merkle correcta obtenida tras su autenticación. El resultado esperado es que el contrato inteligente realice la validación criptográfica on-chain con éxito, verifique la concordancia contra la raíz publicada y persista el voto en el bloque de Sepolia sin inconvenientes.\n\n"
+    },
+    {
+      "key": "VOTAR-354",
+      "id": "10661",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-354",
+      "summary": "Solicitud autenticada de prueba de pertenencia al padrón (Merkle Proof)",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "High",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "boleta-unica-digital-bud",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-305",
+        "summary": "Épica 6 — Boleta Única Digital (BUD)"
+      },
+      "created": "2026-05-24T20:43:00.007-0300",
+      "updated": "2026-06-09T20:30:03.850-0300",
+      "description": "Como **Votante**, quiero solicitar mi prueba de inclusión en el padrón (Merkle Proof) a través de un endpoint autenticado, para demostrar que estoy habilitado para votar sin revelar información personal sensible al _Smart Contract_.\n\n## Criterios de aceptación\n\n* **Transporte Seguro:** Toda la comunicación entre la aplicación (BUD) y el Backend debe realizarse exclusivamente a través de **HTTPS** con TLS 1.3, evitando la interceptación de la prueba.\n* **Validación de Identidad (JWT):** El endpoint debe validar estrictamente la firma y vigencia del JWT proporcionado. Si el token está expirado, es malformado o no ha sido emitido por el proveedor de identidad oficial (SSO), debe retornar un error `401 Unauthorized`.\n* **Lógica de Negocio (Backend):** Tras validar el JWT, el backend debe:\n\n    * Verificar si el usuario está en el padrón actualizado.\n    * Generar la _Merkle Proof_ basada en el _Merkle Tree_ actual de la elección.\n    * Si el usuario no está en el padrón, retornar un error `403 Forbidden` (o `404 Not Found` según preferencia de API).\n    \n* **Formato de Respuesta:** La respuesta debe ser un JSON estructurado con: `{ \"merkleProof\": [...], \"root\": \"0x...\" }`.\n* **Rate Limiting:** Se debe implementar un límite de peticiones (ej. máx. 5 solicitudes por IP por minuto) para prevenir ataques de denegación de servicio (DoS) o fuerza bruta contra el generador de pruebas.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01 (Happy Path):** El votante se autentica, solicita la prueba y recibe el JSON con la `merkleProof`. Se verifica que el _Smart Contract_ acepta esta prueba como válida para este usuario.\n* **UAT-02 (Token Expirado):** Intentar solicitar la prueba con un JWT que ha superado su fecha de expiración. El sistema debe responder `401 Unauthorized` y solicitar la re-autenticación.\n* **UAT-03 (Usuario no empadronado):** Un usuario autenticado con una credencial institucional válida, pero que no figura en el padrón electoral, solicita la prueba. El sistema debe responder `403 Forbidden` con un mensaje claro (\"No te encuentras habilitado en el padrón\").\n* **UAT-04 (Seguridad de Transporte):** Intentar realizar la petición mediante HTTP (sin S). La solicitud debe ser rechazada o redirigida automáticamente.\n\n"
+    },
+    {
+      "key": "VOTAR-379",
+      "id": "10686",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-379",
+      "summary": "Desvinculación criptográfica identidad↔voto",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "Highest",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "seguridad-y-cumplimiento-norma",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-309",
+        "summary": "Épica 10 — Seguridad y Cumplimiento Normativo"
+      },
+      "created": "2026-05-24T20:43:15.637-0300",
+      "updated": "2026-06-09T20:57:09.418-0300",
+      "description": "**Como** Auditor **quiero** constatar la ausencia de tablas o bases de datos intermedias que vinculen las identidades de los votantes con sus selecciones electorales o nulificadores **para** garantizar el secreto absoluto del voto en el ecosistema digital de la aplicación. \n\n## Criterios de aceptación\n\n* **Demostración de anonimato en persistencia de datos**: Dado que el sistema almacena las operaciones de la elección, cuando un auditor identifica e inspecciona los esquemas de bases de datos de la plataforma, entonces la arquitectura de la aplicación debe demostrar la inexistencia absoluta de tablas relacionales, colecciones intermedias o registros de logs que mapeen el identificador de usuario (voterId) con su correspondiente nulificador de control de doble voto o el hash de su transacción de votación.\n* **Inexistencia de persistencia en el cliente (Browser Storage):** El sistema debe garantizar que, una vez finalizado el proceso de votación y emitido el recibo, no quede ningún rastro en el almacenamiento local (`localStorage`, `sessionStorage` o `cookies`) que vincule la sesión del usuario con el nulificador o la clave privada de la billetera efímera.\n* **Disociación de identidades en el transporte de red:** La arquitectura debe asegurar que los paquetes de datos enviados a la blockchain (transacción de voto + Merkle Proof) no contengan metadatos, tokens de sesión de SSO o identificadores de usuario que permitan a un administrador de red correlacionar el origen del tráfico con el contenido del voto.\n* **Anonimato en el Audit Log público:** Los registros de auditoría operativa (_Audit Logs_) deben registrar eventos de \"voto emitido\" sin incluir direcciones IP, agentes de usuario (User-Agent) o cualquier huella digital que, cruzada con los logs de autenticación del SSO, pueda re-identificar al votante.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Inspección de relaciones en esquemas de almacenamiento: El auditor técnico revisará el esquema de base de datos relacional y no relacional de la plataforma. El resultado esperado es confirmar la total ausencia de claves foráneas, colecciones conjuntas o logs intermedios que almacenen de forma simultánea los identificadores personales de los usuarios y las firmas de sus votos correspondientes.\n* **UAT-02**: Intento de reconstrucción relacional de datos personales y elecciones: El usuario con privilegios de base de datos técnica ejecutará sentencias SQL de cruce de datos (JOIN) utilizando variables de sesión de usuarios y logs del Tally on-chain de un comicio finalizado. El resultado esperado es comprobar que es imposible trazar de forma unívoca o de probabilidad la correspondencia de un voto a un correo institucional específico del SSO, corroborando el anonimato.\n* **UAT-03**: El auditor iniciará una sesión de votación, emitirá el sufragio y, tras recibir el recibo criptográfico, inspeccionará las herramientas de desarrollador del navegador (sección _Application/Storage_), para confirmar que el voterId, la clave privada efímera y el nulificador han sido eliminados del almacenamiento del navegador.\n* **UAT-04**: Revisar la petición POST que envía el voto al smart-contract. Deberá verificarse que en el el _payload_ y en los _headers_ de la petición no viajan simultáneamente el token JWT del SSO y la firma del voto o la Merkle Proof.\n* **UAT-05**: Se tomará una muestra de n registros del audit log público del sistema (entre 10 y 100), con el fin de comprobar que no existen campos comunes (como `SessionID` o `IP_Address`) que permitan unir un registro de \"voto confirmado\" con un registro de \"inicio de sesión exitoso\".\n\n<custom data-type=\"emoji\" data-id=\"id-0\">:warning:</custom> NOTA: Se pueden usar técnicas de masking para guardar datos en los logs (en lugar de guardar dni 44244136, guardamos \\*\\*\\*\\*\\*136), o de tokenización (en el log público guardamos el dato DNI, pero tokenizado, y en una tabla privada tneemos esta tokenización asociada al DNI real. Obvio esto para el voto no, porque un admin lo podría ver, pero dependiendo el caso se podría aplicar esta técnica)."
+    },
+    {
+      "key": "VOTAR-384",
+      "id": "10691",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-384",
+      "summary": "Implementación de Pipeline CI/CD y Automatización de Pruebas",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "Highest",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "infraestructura-y-devops",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-310",
+        "summary": "Épica 11 — Infraestructura y DevOps"
+      },
+      "created": "2026-05-24T20:43:18.633-0300",
+      "updated": "2026-06-09T20:47:09.279-0300",
+      "description": "**Como** Auditor, **quiero** contar con un pipeline de integración y entrega continua (CI/CD) automatizado, **para** asegurar que cada nueva modificación pase obligatoriamente por análisis estáticos, técnicos y suites de pruebas, garantizando la estabilidad y el cumplimiento de los estándares de calidad del sistema. \n\n## Criterios de aceptación\n\n* **Garantía de cobertura y bloqueo automático**: El pipeline debe ejecutar las pruebas unitarias y de integración en cada _Pull Request_. Si el porcentaje de cobertura (coverage) es inferior al 80% en módulos de validación y criptografía, el despliegue y el merge deben bloquearse automáticamente.\n* **Análisis estático de seguridad (Smart Contracts)**: El sistema debe realizar un análisis de vulnerabilidades sobre el código en Solidity antes de permitir cualquier interacción con la Testnet Sepolia.\n* **Validación de estilo y formateo (Linting)**: El pipeline debe verificar que el código cumpla con las convenciones de estilo predefinidas, deteniendo el flujo ante errores de sintaxis o formateo.\n* **Aislamiento de entornos**: Todas las pruebas deben ejecutarse en contenedores o entornos aislados que emulen las condiciones de la Testnet (QA) sin incurrir en costos de gas reales.\n* **Trazabilidad de la Integración**: Se prohíbe el merge directo a las ramas `develop` o `master` si el pipeline no ha finalizado con estado \"Success\".\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Se envían cambios al backend con pruebas unitarias que cubren el 85% del código nuevo, por lo que el pipeline en GitHub Actions marca la tarea en verde y habilita el botón de merge.\n* **UAT-02**: Se modifica una función de validación criptográfica omitiendo las pruebas asociadas. Si se quiere subir, el pipeline calculará una cobertura menor al 80%, fallará la tarea y bloqueará la integración de los cambios.\n* **UAT-03**: El auditor técnico intenta integrar un smart contract con una falla de seguridad conocida (ej. reentrancy). La herramienta de análisis estático dentro del pipeline detecta el riesgo, emite una alerta y detiene el flujo.\n* **UAT-04**: Un integrante sube código con identación incorrecta o variables que no siguen la convención. El pipeline falla en la fase de \"Linting\" y solicita la corrección antes de proceder a la fase de tests.\n\n"
+    },
+    {
+      "key": "VOTAR-381",
+      "id": "10688",
+      "url": "https://fivestack.atlassian.net/browse/VOTAR-381",
+      "summary": "Hardening de interfaces web mediante cabeceras de seguridad (Helmet)",
+      "issueType": "Historia de usuario",
+      "status": "Asignados - Sin empezar",
+      "statusCategory": "To Do",
+      "priority": "Highest",
+      "assignee": null,
+      "reporter": "Ignacio Mosconi",
+      "labels": [
+        "seguridad-y-cumplimiento-norma",
+        "votar"
+      ],
+      "parent": {
+        "key": "VOTAR-309",
+        "summary": "Épica 10 — Seguridad y Cumplimiento Normativo"
+      },
+      "created": "2026-05-24T20:43:16.905-0300",
+      "updated": "2026-06-09T20:54:37.024-0300",
+      "description": "**Como** Auditor, **quiero** que las interfaces de la plataforma (BUD y Panel) implementen cabeceras de seguridad HTTP robustas **para** mitigar vectores de ataque técnicos, garantizando que el entorno de sufragio y administración sea resistente a manipulaciones externas.\n\n## Criterios de aceptación\n\n* **Hardening completo de interfaces mediante cabeceras HTTP**: Dado que un cliente de red solicita la carga del frontend del sistema, cuando el servidor web sirve los archivos estáticos, entonces inyecta de forma obligatoria las directivas HTTP de Helmet, forzando la conexión cifrada exclusiva (HSTS), delimitando la política de seguridad de origen de contenido (CSP) para evitar la carga de scripts no autorizados y configurando la cabecera X-Frame-Options en modo de rechazo para evitar el renderizado en marcos iframe de terceros.\n* **Restricción de hardware (Permissions-Policy):** El sistema debe inyectar la cabecera `Permissions-Policy` para desactivar explícitamente el acceso a la cámara, micrófono y geolocalización en la BUD y el Panel, minimizando la superficie de ataque del navegador.\n* **Prevención de MIME-Sniffing:** Se debe configurar la cabecera `X-Content-Type-Options: nosniff` para evitar que el navegador interprete archivos de forma distinta a la declarada en el `Content-Type`.\n* **Control de fugas de referencia (Referrer-Policy):** La cabecera `Referrer-Policy` debe estar configurada en `same-origin` o `no-referrer` para evitar que se envíen tokens de sesión o IDs de comicio en la URL a dominios externos.\n\n## Pruebas de usuario (UAT)\n\n* **UAT-01**: Auditoría de seguridad de cabeceras en Google Lighthouse: El desarrollador desplegará el frontend en su entorno de staging y correrá un análisis de seguridad e integridad completo utilizando la herramienta Lighthouse. El resultado esperado es que la plataforma alcance una puntuación perfecta de 100 sobre 100 en el módulo de mejores prácticas y seguridad técnica, constatando la correcta implementación de todas las cabeceras HTTP de protección.\n* **UAT-02**: Intento de inyección de iframe de terceros (Clickjacking): El analista de seguridad creará una página web externa que intente incrustar la cabina de votación de la BUD utilizando un elemento <iframe src=\"[https://bud.votar.net.ar](https://bud.votar.net.ar)\"> (o la URL que corresponda). El resultado esperado es que el navegador detenga el procesamiento de la página embebida, la consola del explorador reporte una advertencia de violación debido a la cabecera X-Frame-Options o el encabezado frame-ancestors y la interfaz del sistema permanezca protegida de manipulaciones de clics.\n* **UAT-03**: El auditor abrirá la BUD e intentará forzar una petición de acceso a la cámara o geolocalización mediante la consola de desarrollador. El navegador debe denegar la petición automáticamente debido a la directiva de `Permissions-Policy`.\n* **UAT-04**: El auditor hará clic en un enlace externo (si existiera) desde el Panel de Administración y analizará los headers de salida. Deberá confirmarse que el encabezado `Referer` no contiene la URL completa de la aplicación, protegiendo posibles datos sensibles en la ruta.\n* **UAT-05**: Utilizando una herramienta de inspección de red, se verificará que el 100% de los recursos servidos por el backend incluyan el header `X-Content-Type-Options: nosniff`.\n\n"
+    }
+  ]
+}

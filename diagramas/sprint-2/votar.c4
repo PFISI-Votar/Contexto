@@ -219,8 +219,8 @@ model {
         description "Garantiza separación criptográfica identidad→voto: emite credencial anónima vinculada a la hoja Merkle del votante autenticado; no persiste la asociación (compliance Ley 25.326)"
       }
       merkleBuilder = component "Constructor de Árboles de Merkle" {
-        technology "merkletreejs / py-merkle"
-        description "Construye el Merkle Tree por elección (hash keccak256), calcula la raíz para publicación on-chain y genera Merkle Proofs individuales bajo demanda autenticada"
+        technology "@openzeppelin/merkle-tree (StandardMerkleTree)"
+        description "VOTAR-334: construye árbol Merkle Keccak-256 determinístico al importar CSV; persiste raíz + tree_dump en MERKLE_TREE; expone GET /padron/merkle y GET /votantes/:hashHoja/proof (admin). Proofs calculadas on-demand, NO persistidas por votante (lineamientos §7.1)"
       }
       merklePublisherService = component "Publicador Merkle On-Chain (US-335)" {
         technology "NestJS BlockchainModule / ethers v6"
@@ -228,7 +228,7 @@ model {
       }
       padronModule = component "Módulo Padrón (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "Import CSV (US-330/331), GET /padron/merkle (US-334), POST /padron/merkle/publicar (US-335). Merkle proofs on-demand sin persistir PII"
+        description "Import CSV (US-330/331), GET /padron/merkle (VOTAR-334), POST /padron/merkle/publicar (US-335). Merkle proofs on-demand sin persistir PII"
       }
       reportGenerator = component "Generador de Reportes Institucionales" {
         technology "Node.js / ReportLab"
@@ -267,7 +267,7 @@ model {
       }
       voterSchema = component "Esquema de Padrón" {
         technology "PostgreSQL Schema"
-        description "Hashes del padrón habilitado por elección, vinculados a la hoja Merkle correspondiente"
+        description "PADRON_ELECTORAL (hash_padron = raíz Merkle compacta), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb, tx_hash_publicacion — VOTAR-334 + US-335)"
       }
       votoConfirmacionSchema = component "Tabla voto_confirmacion" {
         technology "PostgreSQL Table"

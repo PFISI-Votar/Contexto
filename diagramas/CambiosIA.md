@@ -15,7 +15,7 @@ diagramas/
     ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
     ├── Diagrama de clases - Sprint 1 - PFISI.mmd
     └── votar.c4
-└── sprint-2/
+└── sprint-2/             # diagramas del Sprint 2
     ├── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
     ├── Diagrama de clases - Sprint 2 - PFISI.mmd
     └── votar.c4
@@ -27,11 +27,37 @@ diagramas/
 
 - **Tipo de cambio**: extensión de `MERKLE_TREE` con metadatos de publicación on-chain; clases `MerkleRootStore`, `BlockchainPublisher`, `PadronElectoral.publicarSelloOnChain()`; C4 con `merklePublisherService`, `padronModule` y `MerkleRootStore.sol` implementado.
 - **Motivo**: US-335 — Publicación del sello de integridad del padrón en Sepolia (`publishRoot` + evento `RootPublished`).
-- **Archivos nuevos**:
+- **Archivos modificados**:
   - `sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
   - `sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd`
-- **Archivos modificados**:
   - `sprint-2/votar.c4`
+
+---
+
+## 2026-06-27 — sprint-2/Diagrama de clases + votar.c4 (VOTAR-334)
+
+- **Tipo de cambio**: diagrama de clases Sprint 2 con `PadronElectoral`, `MerkleTree`, `MerkleBuilderService`, `PadronService` y flujo on-demand de proofs; C4 Sprint 2 actualizado (`@openzeppelin/merkle-tree`, persistencia `tree_dump`, endpoints de auditoría).
+- **Motivo**: VOTAR-334 — cerrar artefactos de diseño pendientes según lineamientos §6 (clases + componentes).
+- **Archivos nuevos**:
+  - `sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd`
+  - `sprint-2/votar.c4`
+
+---
+
+## 2026-06-26 — sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd (VOTAR-334)
+
+- **Tipo de cambio**: implementación de `MERKLE_TREE` con `tree_dump` (jsonb); `hash_padron` pasa a ser raíz Merkle Keccak-256; `indice_hoja` en orden canónico lexicográfico; relación 1:1 `PADRON_ELECTORAL`↔`MERKLE_TREE`.
+- **Motivo**: VOTAR-334 — Consolidación criptográfica de votantes habilitados. Proofs calculadas on-demand desde `tree_dump` (decisión híbrida). Migración `AddMerkleTree1782400000000` en `votar.back`.
+- **Archivo nuevo**: `sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
+
+---
+
+## 2026-06-25 — Auth votante BUD (US-312)
+
+- **Tipo de cambio**: flujo de autenticación del votante en BUD vía BFF Autogestión UTN; JWT `role=voter` en cookie HttpOnly separada (`votar_voter_access_token`), TTL 30 min, sin refresh; endpoint público `GET /elecciones/:id/configuracion-bud`.
+- **Motivo**: US-312 — Login del Votante vía SSO. Endpoints `/auth/votante/login|me|logout`; protección de votación vía JWT en lugar de `x-votante-token`.
+- **Archivos modificados**:
+  - `sprint-1/votar.c4`
 
 ---
 
@@ -59,8 +85,6 @@ diagramas/
 - **Archivos modificados**:
   - `sprint-1/votar.c4`
   - `contexto-sistema.md`
-
----
 
 ## 2026-06-24 — sprint-1 (US-355 — Boleta Única Digital / confirmación off-chain)
 
