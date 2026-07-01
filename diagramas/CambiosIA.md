@@ -19,6 +19,15 @@ diagramas/
 
 ---
 
+## 2026-06-25 — Auth votante BUD (US-312)
+
+- **Tipo de cambio**: flujo de autenticación del votante en BUD vía BFF Autogestión UTN; JWT `role=voter` en cookie HttpOnly separada (`votar_voter_access_token`), TTL 30 min, sin refresh; endpoint público `GET /elecciones/:id/configuracion-bud`.
+- **Motivo**: US-312 — Login del Votante vía SSO. Endpoints `/auth/votante/login|me|logout`; protección de votación vía JWT en lugar de `x-votante-token`.
+- **Archivos modificados**:
+  - `sprint-1/votar.c4`
+
+---
+
 ## 2026-06-24 — sprint-1/votar.c4 (US-313 — cierre UAT frontend y auth)
 
 - **Tipo de cambio**: actualización de descripciones en C4 Sprint 1 (`adminAuth`, `jwtValidator`, `auditLogger`) para reflejar implementación real US-313 (Autogestión UTN + JWT propio + probe 403 en Panel).
@@ -43,8 +52,6 @@ diagramas/
 - **Archivos modificados**:
   - `sprint-1/votar.c4`
   - `contexto-sistema.md`
-
----
 
 ## 2026-06-24 — sprint-1 (US-355 — Boleta Única Digital / confirmación off-chain)
 
