@@ -107,8 +107,8 @@ model {
       description "Interfaz para selección de candidatos, generación de claves ECC y firma de transacciones"
 
       auth = component "Módulo de Autenticación BUD" {
-        technology "React Context / OIDC"
-        description "Gestiona el inicio de sesión y obtención del token SSO para el votante"
+        technology "React / TanStack Query / cookies HttpOnly"
+        description "US-312: login en /comicios/:id/votar vía legajo y clave Autogestión UTN. Sesión en cookie votar_voter_access_token (JWT role=voter, TTL 30m, sin refresh). Restaura sesión con GET /auth/votante/me"
       }
       ballot = component "Selector de Candidatos" {
         technology "React Component"
@@ -194,9 +194,13 @@ model {
         technology "Express / FastAPI / OpenAPI 3.1"
         description "Expone endpoints REST versionados para BUD, Panel y Dashboard. Rate limiting + CORS"
       }
-      jwtValidator = component "Validador JWT / OIDC" {
+      jwtValidator = component "Validador JWT (admin)" {
         technology "NestJS Passport JWT + Autogestión UTN (US-313)"
-        description "US-313 (interino): valida credenciales contra API Autogestión UTN, emite JWT propio (HS256) con claim role (election_admin | voter) según AUTORIDAD_ELECTORAL; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
+        description "US-313 (interino): valida cookie admin y JWT role=election_admin en rutas del Panel; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
+      }
+      votanteAuthModule = component "Módulo Auth Votante (NestJS)" {
+        technology "NestJS 11 / Passport JWT / Autogestión UTN"
+        description "US-312: POST /auth/votante/login valida credenciales contra Autogestión, comprueba hash en PADRON_VOTANTE y emite JWT role=voter en cookie HttpOnly (30m, sin /auth/votante/refresh). GET /auth/votante/me y POST /auth/votante/logout"
       }
       rulesEngine = component "Motor de Reglas Electorales" {
         technology "TypeScript / Pydantic"
@@ -236,7 +240,7 @@ model {
       }
       votoModule = component "Módulo Voto (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "GET /elecciones/:idEleccion/boleta-digital devuelve la BUD oficializada. POST /elecciones/:idEleccion/votos/confirmar registra recepción off-chain con votante_hash, idempotency_key, payload_hash y comprobante_hash; no almacena selección en claro"
+        description "GET /elecciones/:idEleccion/configuracion-bud (público, US-312). GET /elecciones/:idEleccion/boleta-digital y POST /elecciones/:idEleccion/votos/confirmar protegidos con JWT votante. Registra voto_confirmacion con votante_hash e idempotency_key; no almacena selección en claro (US-355)"
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
@@ -404,6 +408,7 @@ model {
   votar.bud.proofRequester -> votar.bud.blockchainClient "Entrega Merkle Proof para la transacción"
 
   // Frontends -> API Backend
+  votar.bud.auth -> votar.api.apiRouter "POST /auth/votante/login y GET /auth/votante/me" { technology "JSON/HTTPS + cookies" }
   votar.bud.proofRequester -> votar.api.apiRouter "Solicita Merkle Proof autenticado" { technology "JSON/HTTPS" }
   votar.panel.voterManager -> votar.api.apiRouter "Envía CSV de padrón para procesamiento" { technology "multipart/HTTPS" }
   votar.panel.electionConfig -> votar.api.apiRouter "Crea comicio en BORRADOR (POST /elecciones)" { technology "JSON/HTTPS" }
@@ -415,8 +420,11 @@ model {
   votar.dashboard.statsViewer -> votar.api.apiRouter "Consulta reportes institucionales y metadatos off-chain" { technology "JSON/HTTPS" }
 
   // Flujo interno API Backend
-  votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT en cada request"
-  votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN; emite JWT de sesión con rol" { technology "HTTPS" }
+  votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT admin en rutas del Panel"
+  votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN para admin" { technology "HTTPS" }
+  votar.api.apiRouter -> votar.api.votanteAuthModule "Enruta login, sesión y logout del votante (US-312)"
+  votar.api.votanteAuthModule -> sso "Valida legajo/clave contra API Autogestión UTN (BFF)" { technology "HTTPS" }
+  votar.api.votanteAuthModule -> votar.api.dataAccess "Consulta padrón hasheado y configuración SSO del comicio"
   votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
   votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
@@ -591,20 +599,22 @@ views {
     rpc -> votar.contracts.merkleRootStore "0c. Almacena root: electionId => bytes32"
 
     // Fase de votación
-    votante -> votar.bud.auth "1. Inicia sesión contra SSO"
-    votar.bud.auth -> votar.api.apiRouter "2. Solicita token y validación"
-    votar.api.jwtValidator -> sso "3. Valida credenciales de identidad"
-    sso -> votar.api.jwtValidator "4. Retorna claims de identidad legal"
-    votar.api.identityDecoupler -> votar.api.merkleBuilder "5. Genera credencial anónima y calcula Merkle Proof off-chain"
-    votar.api.apiRouter -> votar.bud.proofRequester "6. Entrega Merkle Proof del votante"
-    votar.bud.cryptoEngine -> votar.bud.blockchainClient "7. Firma sufragio (ECDSA) y calcula nulificador localmente"
-    votar.bud.blockchainClient -> rpc "8. Envía castVote(payload, sig, proof) a la red"
-    rpc -> votar.contracts.ballotContract "9. Transmite transacción castVote() a la EVM"
-    votar.contracts.ballotContract -> votar.contracts.merkleRootStore "10. Consulta Merkle Root activa del comicio"
-    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "11. MerkleProof.verify(proof, root, leaf): valida padrón"
-    votar.contracts.ballotContract -> votar.contracts.ozECDSA "12. ECDSA.recover: verifica Firma Digital del votante (Ley 25.506)"
-    votar.contracts.ballotContract -> votar.contracts.voteRegistry "13. Registra/sobrescribe voto por nullifier (último voto cuenta)"
-    votar.contracts.ballotContract -> votar.contracts.tallyContract "14. Actualiza contadores por delta"
-    votar.contracts.ballotContract -> ethereum "15. Emite VoteCast(electionId, nullifier, candidateId, isOverwrite)"
+    votante -> votar.bud.auth "1. Ingresa legajo y clave institucional (BUD)"
+    votar.bud.auth -> votar.api.apiRouter "2. POST /auth/votante/login"
+    votar.api.votanteAuthModule -> sso "3. BFF valida credenciales en Autogestión UTN"
+    sso -> votar.api.votanteAuthModule "4. Retorna perfil (DNI/email) si son válidas"
+    votar.api.votanteAuthModule -> votar.api.dataAccess "4b. Verifica hash(dni:email) en PADRON_VOTANTE"
+    votar.api.apiRouter -> votar.bud.auth "5. Set-Cookie votar_voter_access_token (JWT role=voter)"
+    votar.api.identityDecoupler -> votar.api.merkleBuilder "6. Genera credencial anónima y calcula Merkle Proof off-chain"
+    votar.api.apiRouter -> votar.bud.proofRequester "7. Entrega Merkle Proof del votante"
+    votar.bud.cryptoEngine -> votar.bud.blockchainClient "8. Firma sufragio (ECDSA) y calcula nulificador localmente"
+    votar.bud.blockchainClient -> rpc "9. Envía castVote(payload, sig, proof) a la red"
+    rpc -> votar.contracts.ballotContract "10. Transmite transacción castVote() a la EVM"
+    votar.contracts.ballotContract -> votar.contracts.merkleRootStore "11. Consulta Merkle Root activa del comicio"
+    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "12. MerkleProof.verify(proof, root, leaf): valida padrón"
+    votar.contracts.ballotContract -> votar.contracts.ozECDSA "13. ECDSA.recover: verifica Firma Digital del votante (Ley 25.506)"
+    votar.contracts.ballotContract -> votar.contracts.voteRegistry "14. Registra/sobrescribe voto por nullifier (último voto cuenta)"
+    votar.contracts.ballotContract -> votar.contracts.tallyContract "15. Actualiza contadores por delta"
+    votar.contracts.ballotContract -> ethereum "16. Emite VoteCast(electionId, nullifier, candidateId, isOverwrite)"
   }
 }
