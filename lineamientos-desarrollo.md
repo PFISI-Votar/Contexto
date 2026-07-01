@@ -224,6 +224,10 @@ diagramas/
     ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
     ├── Diagrama de clases - Sprint 1 - PFISI.mmd
     └── votar.c4
+└── sprint-2/             # diagramas del Sprint 2
+    ├── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
+    ├── Diagrama de clases - Sprint 2 - PFISI.mmd
+    └── votar.c4
 ```
 
 Cada sprint tiene su carpeta (`sprint-N/`). DER, diagrama de clases y C4 (`votar.c4`) viven dentro de la carpeta del sprint al que corresponden. Solo `CambiosIA.md` permanece en la raíz de `diagramas/`.

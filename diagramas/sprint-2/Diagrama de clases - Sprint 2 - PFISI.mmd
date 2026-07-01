@@ -1,0 +1,163 @@
+%% ============================================================================
+%% DIAGRAMA DE CLASES — Plataforma VOTAR (Modelo de Análisis)
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09 — Sprint 2
+%% ============================================================================
+%% Evolución respecto a Sprint 1:
+%% - VOTAR-334: consolidación criptográfica del padrón (Merkle Keccak-256)
+%% - US-330/331: importación CSV, hojas anonimizadas, reporte de novedades
+%% - MerkleProof on-demand (NO persistida — lineamientos §7.1)
+%% ============================================================================
+
+classDiagram
+
+    %% ── Enumeraciones de dominio ───────────────────────────────────────────
+    class EleccionEstado {
+        <<enumeration>>
+        BORRADOR
+        CONFIGURADA
+        ABIERTA
+        CERRADA
+        ESCRUTADA
+    }
+
+    class MerkleTreeEstado {
+        <<enumeration>>
+        GENERADO
+        ACTIVO
+        PUBLICADO_ON_CHAIN
+        OBSOLETO
+    }
+
+    class PadronEstado {
+        <<enumeration>>
+        BORRADOR
+        PUBLICADO
+        CERRADO
+    }
+
+    class TipoNovedad {
+        <<enumeration>>
+        DNI_AUSENTE
+        EMAIL_AUSENTE
+        DNI_INVALIDO
+        EMAIL_INVALIDO
+        DUPLICADO
+    }
+
+    class MerkleProof {
+        <<value object>>
+        -String[] hashesHermanos
+        +verificarConRaiz(root Hash, leaf Hash) boolean
+    }
+
+    class Hash {
+        <<value object>>
+        -String valor
+        +validarFormatoKeccak256() boolean
+        +toBytes32Hex() String
+    }
+
+    %% ── Núcleo del comicio (Sprint 1) ─────────────────────────────────────
+    class Eleccion {
+        -int idEleccion
+        -String nombre
+        -DateTime fechaInicio
+        -DateTime fechaFin
+        -EleccionEstado estado
+        +estaEnBorrador() boolean
+    }
+
+    class AutoridadElectoral {
+        -int idAutoridad
+        -String emailInstitucional
+        +importarPadron(eleccion Eleccion, csv File) PadronElectoral
+        +consultarSelloMerkle(eleccion Eleccion) Hash
+    }
+
+    %% ── Padrón y consolidación criptográfica (VOTAR-334) ──────────────────
+    class PadronElectoral {
+        -int idPadron
+        -int totalVotantesHabilitados
+        -Hash hashPadron
+        -PadronEstado estado
+        -int totalProcesados
+        -int totalOmitidos
+        -NovedadPadron[] novedades
+        +obtenerResumen() PadronResumen
+    }
+
+    class PadronVotante {
+        -UUID idPadronVotante
+        -int indiceHoja
+        -Hash hashHoja
+        -DateTime generadoEn
+    }
+
+    class MerkleTree {
+        -int idMerkleTree
+        -Hash merkleRoot
+        -int totalHojas
+        -int version
+        -MerkleTreeEstado estado
+        -Object treeDump
+        -DateTime fechaGeneracion
+        +obtenerRaiz() Hash
+    }
+
+    class NovedadPadron {
+        <<value object>>
+        -int linea
+        -TipoNovedad tipo
+        -String motivo
+    }
+
+    class MerkleBuilderService {
+        <<service>>
+        +buildFromLeaves(hashes String[]) MerkleBuildResult
+        +getProof(treeDump Object, leafIndex int) String[]
+        +verifyProof(treeDump Object, leafHash String, proof String[]) boolean
+        +getRootFromDump(treeDump Object) String
+    }
+
+    class PadronService {
+        <<service>>
+        +importarPadron(idEleccion int, archivo File) ImportarPadronResponse
+        +obtenerMerkle(idEleccion int) MerkleResumenResponse
+        +obtenerProofVotante(idEleccion int, hashHoja String) MerkleProofResponse
+        +listarVotantes(idEleccion int, page int, limit int) ListarVotantesResponse
+        +eliminarPadron(idEleccion int) void
+    }
+
+    class PadronController {
+        <<controller>>
+        +importarPadron() ImportarPadronResponse
+        +obtenerMerkle() MerkleResumenResponse
+        +obtenerProofVotante() MerkleProofResponse
+    }
+
+    %% ── Composición y asociaciones ───────────────────────────────────────
+    Eleccion "1" *-- "0..1" PadronElectoral : habilita
+    PadronElectoral "1" *-- "1" MerkleTree : consolida
+    PadronElectoral "1" *-- "1..*" PadronVotante : incluye hojas
+    PadronElectoral "1" *-- "0..*" NovedadPadron : reporta
+
+    PadronController --> PadronService : delega
+    PadronService --> MerkleBuilderService : construye árbol
+    PadronService --> PadronElectoral : persiste
+    MerkleBuilderService ..> MerkleProof : genera on-demand
+    MerkleBuilderService ..> Hash : usa Keccak-256
+    PadronVotante --> Hash : hash_hoja
+    MerkleTree --> Hash : merkle_root
+    PadronElectoral --> Hash : hash_padron = raíz compacta
+    MerkleTree --> MerkleTreeEstado : estado
+    PadronElectoral --> PadronEstado : estado
+    NovedadPadron --> TipoNovedad : tipo
+
+    AutoridadElectoral "1..*" --> "1..*" Eleccion : administra
+    Eleccion --> EleccionEstado : estado
+
+    note for MerkleTree "VOTAR-334: persiste tree_dump (StandardMerkleTree)\npara reconstruir proofs sin almacenarlas por votante."
+    note for MerkleBuilderService "Orden canónico lexicográfico de hojas.\nDeterminismo UAT-01: mismo conjunto → misma raíz."
+    note for PadronService "Consolidación en import CSV (BORRADOR).\nEndpoints GET /padron/merkle y\n/votantes/:hashHoja/proof para auditoría."
+    note for PadronVotante "Solo hash Keccak-256 (DNI+email).\nSin PII en texto plano (Ley 25.326)."
