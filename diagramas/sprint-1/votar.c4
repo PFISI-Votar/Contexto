@@ -137,8 +137,8 @@ model {
       description "Interfaz para la gestión institucional del padrón y reglas electorales"
 
       adminAuth = component "Módulo de Autenticación Admin" {
-        technology "React Context / OIDC"
-        description "Valida privilegios de autoridad electoral con SSO"
+        technology "React / TanStack Router / cookies HttpOnly"
+        description "Login Panel de Gestión vía Autogestión UTN delegada al backend BFF (US-313). Mantiene sesión con cookies HttpOnly y estado de usuario en memoria; el guard consulta user.role=election_admin desde /auth/login, /auth/me o /auth/refresh (la validación autoritativa del JWT y del rol ocurre en backend). Ante acceso forzado sin rol, sondea GET /elecciones para obtener HTTP 403 y auditoría backend antes de mostrar /403"
       }
       voterManager = component "Cargador de Padrón" {
         technology "React / PapaParse"
@@ -195,8 +195,8 @@ model {
         description "Expone endpoints REST versionados para BUD, Panel y Dashboard. Rate limiting + CORS"
       }
       jwtValidator = component "Validador JWT (admin)" {
-        technology "NestJS Passport JWT"
-        description "Valida cookie admin y JWT role=election_admin en rutas del Panel (US-313)"
+        technology "NestJS Passport JWT + Autogestión UTN (US-313)"
+        description "US-313 (interino): valida cookie admin y JWT role=election_admin en rutas del Panel; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
       }
       votanteAuthModule = component "Módulo Auth Votante (NestJS)" {
         technology "NestJS 11 / Passport JWT / Autogestión UTN"
@@ -231,8 +231,8 @@ model {
         description "Emite documentación oficial: acta de apertura/cierre, padrón firmado, reporte de participación. Consume eventos on-chain + datos relacionales"
       }
       auditLogger = component "Registro de Auditoría (Audit Log)" {
-        technology "Winston / structlog + append-only"
-        description "Registra toda acción crítica (login admin, carga padrón, publicación raíz, apertura/cierre). Inmutable a nivel aplicación; expone consulta de auditoría"
+        technology "TypeORM / PostgreSQL append-only"
+        description "Registra ACCESO_DENEGADO (actor, IP, endpoint, timestamp) ante HTTP 403 por rol insuficiente (US-313); el modelo contempla otros eventos críticos (LOGIN, PADRON_CARGADO, COMICIO_ABIERTO, etc.) para evolución posterior. Inmutable a nivel aplicación"
       }
       eleccionModule = component "Módulo Elección (NestJS)" {
         technology "NestJS 11 / TypeORM"
@@ -421,6 +421,7 @@ model {
 
   // Flujo interno API Backend
   votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT admin en rutas del Panel"
+  votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN para admin" { technology "HTTPS" }
   votar.api.apiRouter -> votar.api.votanteAuthModule "Enruta login, sesión y logout del votante (US-312)"
   votar.api.votanteAuthModule -> sso "Valida legajo/clave contra API Autogestión UTN (BFF)" { technology "HTTPS" }
   votar.api.votanteAuthModule -> votar.api.dataAccess "Consulta padrón hasheado y configuración SSO del comicio"
