@@ -15,7 +15,23 @@ diagramas/
     ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
     ├── Diagrama de clases - Sprint 1 - PFISI.mmd
     └── votar.c4
+└── sprint-2/
+    ├── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
+    ├── Diagrama de clases - Sprint 2 - PFISI.mmd
+    └── votar.c4
 ```
+
+---
+
+## 2026-07-01 — sprint-2 (US-335 — Publicación sello Merkle on-chain)
+
+- **Tipo de cambio**: extensión de `MERKLE_TREE` con metadatos de publicación on-chain; clases `MerkleRootStore`, `BlockchainPublisher`, `PadronElectoral.publicarSelloOnChain()`; C4 con `merklePublisherService`, `padronModule` y `MerkleRootStore.sol` implementado.
+- **Motivo**: US-335 — Publicación del sello de integridad del padrón en Sepolia (`publishRoot` + evento `RootPublished`).
+- **Archivos nuevos**:
+  - `sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
+  - `sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd`
+- **Archivos modificados**:
+  - `sprint-2/votar.c4`
 
 ---
 
