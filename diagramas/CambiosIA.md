@@ -23,6 +23,24 @@ diagramas/
 
 ---
 
+## 2026-07-02 — sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd (limpieza modelo de análisis)
+
+- **Tipo de cambio**: eliminación de clases de implementación (`PadronService`, `PadronController`, `MerkleBuilderService`, `BlockchainPublisher`, DTOs de API). El diagrama queda como modelo de análisis puro: entidades de dominio, value objects, enumeraciones y `AlmacenRaizMerkle` como contrato inteligente. Se incorpora el modelo Sprint 1 completo más padrón/Merkle/Votante.
+- **Motivo**: alineación con convención de diagrama de análisis; corrección post VOTAR-354.
+- **Archivo modificado**: `diagramas/sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd`
+
+---
+
+## 2026-07-02 — sprint-2/votar.c4 + Diagrama de clases Sprint 2
+
+- **Tipo de cambio**: nota de dominio en `MerkleProof` (solicitud autenticada on-demand por votante). El detalle de implementación (`GET /elecciones/:id/merkle-proof`, `VotoController`, DTO) queda solo en `votar.c4`.
+- **Motivo**: VOTAR-354 — Solicitud autenticada de prueba de pertenencia al padrón (Merkle Proof).
+- **Archivos modificados**:
+  - `diagramas/sprint-2/votar.c4`
+  - `diagramas/sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd`
+
+---
+
 ## 2026-07-01 — sprint-2 (US-335 — Publicación sello Merkle on-chain)
 
 - **Tipo de cambio**: extensión de `MERKLE_TREE` con metadatos de publicación on-chain; clases `MerkleRootStore`, `BlockchainPublisher`, `PadronElectoral.publicarSelloOnChain()`; C4 con `merklePublisherService`, `padronModule` y `MerkleRootStore.sol` implementado.
