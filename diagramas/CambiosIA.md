@@ -23,6 +23,17 @@ diagramas/
 
 ---
 
+## 2026-07-01 — sprint-2 (US-335 — Publicación sello Merkle on-chain)
+
+- **Tipo de cambio**: extensión de `MERKLE_TREE` con metadatos de publicación on-chain; clases `MerkleRootStore`, `BlockchainPublisher`, `PadronElectoral.publicarSelloOnChain()`; C4 con `merklePublisherService`, `padronModule` y `MerkleRootStore.sol` implementado.
+- **Motivo**: US-335 — Publicación del sello de integridad del padrón en Sepolia (`publishRoot` + evento `RootPublished`).
+- **Archivos modificados**:
+  - `sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
+  - `sprint-2/Diagrama de clases - Sprint 2 - PFISI.mmd`
+  - `sprint-2/votar.c4`
+
+---
+
 ## 2026-06-27 — sprint-2/Diagrama de clases + votar.c4 (VOTAR-334)
 
 - **Tipo de cambio**: diagrama de clases Sprint 2 con `PadronElectoral`, `MerkleTree`, `MerkleBuilderService`, `PadronService` y flujo on-demand de proofs; C4 Sprint 2 actualizado (`@openzeppelin/merkle-tree`, persistencia `tree_dump`, endpoints de auditoría).

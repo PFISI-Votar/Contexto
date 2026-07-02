@@ -158,11 +158,19 @@ erDiagram
         datetime fecha_generacion "Fecha de generación del árbol"
         string estado "GENERADO | ACTIVO | PUBLICADO_ON_CHAIN | OBSOLETO"
         jsonb tree_dump "Dump serializado StandardMerkleTree (VOTAR-334)"
+        string tx_hash_publicacion "Hash tx Sepolia (US-335)"
+        int numero_bloque "Bloque de confirmación on-chain"
+        datetime fecha_publicacion_on_chain "Timestamp publicación on-chain"
+        string direccion_contrato "Address MerkleRootStore compartido (interim US-335)"
     }
 
     %% NOTA VOTAR-334: Los Merkle Proofs NO se persisten por votante.
     %% Se calculan on-demand desde tree_dump + indice_hoja de PADRON_VOTANTE.
     %% Migración: AddMerkleTree1782400000000 en votar.back.
+    %% NOTA US-335: hasta US-337 el contrato MerkleRootStore es compartido
+    %% (una address global); merkle_root_almacenada en SMART_CONTRACT_ELECCION
+    %% queda reservada para despliegue per-comicio. La publicación actual
+    %% persiste tx_hash y direccion_contrato en MERKLE_TREE.
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% ACTORES DEL SISTEMA (Usuarios)

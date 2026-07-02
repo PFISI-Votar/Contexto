@@ -7,6 +7,7 @@
 %% - VOTAR-334: consolidación criptográfica del padrón (Merkle Keccak-256)
 %% - US-330/331: importación CSV, hojas anonimizadas, reporte de novedades
 %% - MerkleProof on-demand (NO persistida — lineamientos §7.1)
+%% - US-335: publicación on-chain del sello Merkle (MerkleRootStore, BlockchainPublisher)
 %% ============================================================================
 
 classDiagram
@@ -75,7 +76,7 @@ classDiagram
         +consultarSelloMerkle(eleccion Eleccion) Hash
     }
 
-    %% ── Padrón y consolidación criptográfica (VOTAR-334) ──────────────────
+    %% ── Padrón, consolidación criptográfica (VOTAR-334) y on-chain (US-335) ─
     class PadronElectoral {
         -int idPadron
         -int totalVotantesHabilitados
@@ -85,6 +86,7 @@ classDiagram
         -int totalOmitidos
         -NovedadPadron[] novedades
         +obtenerResumen() PadronResumen
+        +publicarSelloOnChain() PublicacionMerkle
     }
 
     class PadronVotante {
@@ -102,7 +104,12 @@ classDiagram
         -MerkleTreeEstado estado
         -Object treeDump
         -DateTime fechaGeneracion
+        -String txHashPublicacion
+        -int numeroBloque
+        -DateTime fechaPublicacionOnChain
+        -String direccionContrato
         +obtenerRaiz() Hash
+        +estaPublicadoOnChain() boolean
     }
 
     class NovedadPadron {
@@ -127,6 +134,7 @@ classDiagram
         +obtenerProofVotante(idEleccion int, hashHoja String) MerkleProofResponse
         +listarVotantes(idEleccion int, page int, limit int) ListarVotantesResponse
         +eliminarPadron(idEleccion int) void
+        +publicarMerkleOnChain(idEleccion int) PublicacionMerkle
     }
 
     class PadronController {
@@ -134,6 +142,28 @@ classDiagram
         +importarPadron() ImportarPadronResponse
         +obtenerMerkle() MerkleResumenResponse
         +obtenerProofVotante() MerkleProofResponse
+        +publicarMerkleOnChain() PublicacionMerkle
+    }
+
+    class BlockchainPublisher {
+        <<service>>
+        +enviarPublicacionMerkle(electionId int, root bytes32) PublicacionMerkle
+        +buildExplorerUrl(txHash String) String
+    }
+
+    class MerkleRootStore {
+        <<on-chain>>
+        +publishRoot(electionId uint256, root bytes32) void
+        +getMerkleRoot(electionId uint256) bytes32
+        +RootPublished(electionId, root, timestamp) event
+    }
+
+    class PublicacionMerkle {
+        <<value object>>
+        -String txHash
+        -int blockNumber
+        -String contractAddress
+        -DateTime publishedAt
     }
 
     %% ── Composición y asociaciones ───────────────────────────────────────
@@ -145,8 +175,11 @@ classDiagram
     PadronController --> PadronService : delega
     PadronService --> MerkleBuilderService : construye árbol
     PadronService --> PadronElectoral : persiste
+    PadronService --> BlockchainPublisher : publica sello
     MerkleBuilderService ..> MerkleProof : genera on-demand
     MerkleBuilderService ..> Hash : usa Keccak-256
+    BlockchainPublisher ..> MerkleRootStore : publishRoot
+    BlockchainPublisher ..> PublicacionMerkle : retorna
     PadronVotante --> Hash : hash_hoja
     MerkleTree --> Hash : merkle_root
     PadronElectoral --> Hash : hash_padron = raíz compacta
@@ -157,7 +190,9 @@ classDiagram
     AutoridadElectoral "1..*" --> "1..*" Eleccion : administra
     Eleccion --> EleccionEstado : estado
 
-    note for MerkleTree "VOTAR-334: persiste tree_dump (StandardMerkleTree)\npara reconstruir proofs sin almacenarlas por votante."
+    note for MerkleTree "VOTAR-334: persiste tree_dump (StandardMerkleTree)\npara reconstruir proofs sin almacenarlas por votante.\nUS-335: tx_hash, bloque y dirección on-chain."
     note for MerkleBuilderService "Orden canónico lexicográfico de hojas.\nDeterminismo UAT-01: mismo conjunto → misma raíz."
-    note for PadronService "Consolidación en import CSV (BORRADOR).\nEndpoints GET /padron/merkle y\n/votantes/:hashHoja/proof para auditoría."
+    note for PadronService "Consolidación en import CSV (BORRADOR).\nGET /padron/merkle, /votantes/:hashHoja/proof y\nPOST /padron/merkle/publicar (US-335)."
+    note for PadronElectoral "US-335: publicarSelloOnChain() orquesta\nPOST /padron/merkle/publicar vía BlockchainPublisher."
+    note for MerkleRootStore "US-335 implementado: contrato compartido\nSepolia con MERKLE_UPDATER_ROLE y evento RootPublished."
     note for PadronVotante "Solo hash Keccak-256 (DNI+email).\nSin PII en texto plano (Ley 25.326)."

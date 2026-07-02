@@ -137,8 +137,8 @@ model {
       description "Interfaz para la gestión institucional del padrón y reglas electorales"
 
       adminAuth = component "Módulo de Autenticación Admin" {
-        technology "React Context / OIDC"
-        description "Valida privilegios de autoridad electoral con SSO"
+        technology "React / TanStack Router / cookies HttpOnly"
+        description "Login Panel de Gestión vía Autogestión UTN delegada al backend BFF (US-313). Mantiene sesión con cookies HttpOnly y estado de usuario en memoria; el guard consulta user.role=election_admin desde /auth/login, /auth/me o /auth/refresh (la validación autoritativa del JWT y del rol ocurre en backend). Ante acceso forzado sin rol, sondea GET /elecciones para obtener HTTP 403 y auditoría backend antes de mostrar /403"
       }
       voterManager = component "Cargador de Padrón" {
         technology "React / PapaParse"
@@ -161,8 +161,8 @@ model {
         description "Panel para autoridad: habilita/inhabilita re-voto, define maxVotesPerVoter (1..N), minIntervalSeconds entre re-votos y política de cómputo (último voto cuenta). Valida coherencia y previsualiza impacto antes de guardar"
       }
       rootPublisher = component "Publicador de Raíz Merkle" {
-        technology "Ethers.js"
-        description "Permite a la autoridad publicar la Merkle Root calculada on-chain antes de apertura del comicio"
+        technology "React / TanStack Query"
+        description "US-335: botón «Publicar Raíz on-chain» en panel de padrón; invoca POST /padron/merkle/publicar y muestra tx hash + enlace Etherscan"
       }
     }
     
@@ -195,8 +195,8 @@ model {
         description "Expone endpoints REST versionados para BUD, Panel y Dashboard. Rate limiting + CORS"
       }
       jwtValidator = component "Validador JWT / OIDC" {
-        technology "Passport.js / python-jose"
-        description "Valida tokens SSO (OAuth 2.0 / OIDC), verifica firma con JWKS y extrae claims de rol (votante / ELECTION_ADMIN / auditor)"
+        technology "NestJS Passport JWT + Autogestión UTN (US-313)"
+        description "US-313 (interino): valida credenciales contra API Autogestión UTN, emite JWT propio (HS256) con claim role (election_admin | voter) según AUTORIDAD_ELECTORAL; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
       }
       rulesEngine = component "Motor de Reglas Electorales" {
         technology "TypeScript / Pydantic"
@@ -222,13 +222,21 @@ model {
         technology "@openzeppelin/merkle-tree (StandardMerkleTree)"
         description "VOTAR-334: construye árbol Merkle Keccak-256 determinístico al importar CSV; persiste raíz + tree_dump en MERKLE_TREE; expone GET /padron/merkle y GET /votantes/:hashHoja/proof (admin). Proofs calculadas on-demand, NO persistidas por votante (lineamientos §7.1)"
       }
+      merklePublisherService = component "Publicador Merkle On-Chain (US-335)" {
+        technology "NestJS BlockchainModule / ethers v6"
+        description "POST /elecciones/:id/padron/merkle/publicar: firma publishRoot(electionId, root) en MerkleRootStore (MERKLE_UPDATER_ROLE), persiste tx_hash en MERKLE_TREE y emite RootPublished"
+      }
+      padronModule = component "Módulo Padrón (NestJS)" {
+        technology "NestJS 11 / TypeORM"
+        description "Import CSV (US-330/331), GET /padron/merkle (VOTAR-334), POST /padron/merkle/publicar (US-335). Merkle proofs on-demand sin persistir PII"
+      }
       reportGenerator = component "Generador de Reportes Institucionales" {
         technology "Node.js / ReportLab"
         description "Emite documentación oficial: acta de apertura/cierre, padrón firmado, reporte de participación. Consume eventos on-chain + datos relacionales"
       }
       auditLogger = component "Registro de Auditoría (Audit Log)" {
-        technology "Winston / structlog + append-only"
-        description "Registra toda acción crítica (login admin, carga padrón, publicación raíz, apertura/cierre). Inmutable a nivel aplicación; expone consulta de auditoría"
+        technology "TypeORM / PostgreSQL append-only"
+        description "Registra ACCESO_DENEGADO (actor, IP, endpoint, timestamp) ante HTTP 403 por rol insuficiente (US-313); el modelo contempla otros eventos críticos (LOGIN, PADRON_CARGADO, COMICIO_ABIERTO, etc.) para evolución posterior. Inmutable a nivel aplicación"
       }
       eleccionModule = component "Módulo Elección (NestJS)" {
         technology "NestJS 11 / TypeORM"
@@ -259,7 +267,7 @@ model {
       }
       voterSchema = component "Esquema de Padrón" {
         technology "PostgreSQL Schema"
-        description "PADRON_ELECTORAL (hash_padron = raíz Merkle compacta), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb). VOTAR-334"
+        description "PADRON_ELECTORAL (hash_padron = raíz Merkle compacta), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb, tx_hash_publicacion — VOTAR-334 + US-335)"
       }
       votoConfirmacionSchema = component "Tabla voto_confirmacion" {
         technology "PostgreSQL Table"
@@ -329,8 +337,8 @@ model {
       // ── Almacenamiento de Merkle Roots ───────────────────────────────
       merkleRootStore = component "MerkleRootStore.sol" {
         #web3
-        technology "Solidity Smart Contract"
-        description "Almacena y versiona Merkle Roots publicadas por la autoridad (MERKLE_UPDATER_ROLE). Mapping: electionId => bytes32 root + timestamp. Inmutable tras apertura del comicio. Emite RootPublished(electionId, root)"
+        technology "Solidity Smart Contract (US-335 implementado)"
+        description "Almacena Merkle Roots por electionId (MERKLE_UPDATER_ROLE). publishRoot() emite RootPublished(electionId, root, timestamp). Contrato compartido interim hasta US-337 (factory per-comicio)"
       }
 
       // ── Base RBAC (US-349 — implementado) ───────────────────────────
@@ -416,7 +424,7 @@ model {
 
   // Flujo interno API Backend
   votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT en cada request"
-  votar.api.jwtValidator -> sso "Obtiene JWKS y valida claims OIDC" { technology "HTTPS" }
+  votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN; emite JWT de sesión con rol" { technology "HTTPS" }
   votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
   votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
@@ -452,7 +460,9 @@ model {
   votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora" { technology "TCP/IP" }
 
   // Panel Admin -> Blockchain (publicación de raíz)
-  votar.panel.rootPublisher -> rpc "Publica Merkle Root calculada vía tx firmada por autoridad" { technology "JSON-RPC/HTTPS" }
+  votar.panel.rootPublisher -> votar.api.merklePublisherService "POST /padron/merkle/publicar" { technology "HTTPS / JSON" }
+  votar.api.merklePublisherService -> rpc "publishRoot firmada con MERKLE_UPDATER_ROLE" { technology "JSON-RPC/HTTPS" }
+  votar.api.merklePublisherService -> votar.api.dataAccess "Actualiza MERKLE_TREE (PUBLICADO_ON_CHAIN, tx_hash)" { technology "TypeORM" }
 
   // Frontends -> Blockchain (Web3)
   votar.bud.blockchainClient -> rpc "Envía transacción de voto anónimo firmado (Payload + Proof)" { technology "JSON-RPC/HTTPS" }
@@ -587,8 +597,9 @@ views {
 
     // Fase previa: publicación de padrón on-chain
     autoridad -> votar.panel.rootPublisher "0a. Solicita publicación de Merkle Root calculada"
-    votar.panel.rootPublisher -> rpc "0b. Envía tx firmada con MERKLE_UPDATER_ROLE"
-    rpc -> votar.contracts.merkleRootStore "0c. Almacena root: electionId => bytes32"
+    votar.panel.rootPublisher -> votar.api.merklePublisherService "0b. POST /padron/merkle/publicar"
+    votar.api.merklePublisherService -> rpc "0c. publishRoot con MERKLE_UPDATER_ROLE"
+    rpc -> votar.contracts.merkleRootStore "0d. Almacena root: electionId => bytes32 + RootPublished"
 
     // Fase de votación
     votante -> votar.bud.auth "1. Inicia sesión contra SSO"
