@@ -220,7 +220,7 @@ model {
       }
       merkleBuilder = component "Constructor de Árboles de Merkle" {
         technology "@openzeppelin/merkle-tree (StandardMerkleTree)"
-        description "VOTAR-334: construye árbol Merkle Keccak-256 determinístico al importar CSV; persiste raíz + tree_dump en MERKLE_TREE; expone GET /padron/merkle y GET /votantes/:hashHoja/proof (admin). Proofs calculadas on-demand, NO persistidas por votante (lineamientos §7.1)"
+        description "VOTAR-334: construye árbol Merkle Keccak-256 determinístico al importar CSV; persiste raíz + tree_dump en MERKLE_TREE; expone GET /padron/merkle y GET /votantes/:hashHoja/proof (admin). VOTAR-354: GET /elecciones/:id/merkle-proof (voter autenticado, JWT). Proofs on-demand, NO persistidas por votante (lineamientos §7.1)"
       }
       merklePublisherService = component "Publicador Merkle On-Chain (US-335)" {
         technology "NestJS BlockchainModule / ethers v6"
@@ -244,7 +244,7 @@ model {
       }
       votoModule = component "Módulo Voto (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "GET /elecciones/:idEleccion/boleta-digital devuelve la BUD oficializada. POST /elecciones/:idEleccion/votos/confirmar registra recepción off-chain con votante_hash, idempotency_key, payload_hash y comprobante_hash; no almacena selección en claro"
+        description "GET /elecciones/:idEleccion/boleta-digital devuelve la BUD oficializada. GET /elecciones/:idEleccion/merkle-proof (VOTAR-354): Merkle Proof autenticada para votante (JWT + rate limit IP). POST /elecciones/:idEleccion/votos/confirmar registra recepción off-chain con votante_hash, idempotency_key, payload_hash y comprobante_hash; no almacena selección en claro"
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
