@@ -8,6 +8,7 @@
 %% - VOTAR-334: consolidación criptográfica del padrón (MerkleTree, proofs on-demand)
 %% - US-335: publicación on-chain del sello Merkle (AlmacenRaizMerkle)
 %% - VOTAR-354: solicitud autenticada de MerkleProof por votante (on-demand, sin persistir)
+%% - VOTAR-339: validación on-chain de electores en BallotContract (InvalidMerkleProof)
 %% ============================================================================
 
 classDiagram
@@ -308,6 +309,13 @@ classDiagram
         +consultarRaiz(eleccion Eleccion) Hash
     }
 
+    class ContratoBoleta {
+        <<contrato inteligente>>
+        +castVote(eleccionId int, hojaVotante Hash, proof MerkleProof) void
+        +haVotado(eleccionId int, hojaVotante Hash) boolean
+        -verificarMerkleProof(eleccionId int, hojaVotante Hash, proof MerkleProof) void
+    }
+
     %% ── Composición y asociaciones ───────────────────────────────────────
     Eleccion "1" *-- "1" ConfiguracionComicio : configura
     Eleccion "1" *-- "1" Boleta : publica
@@ -333,8 +341,11 @@ classDiagram
 
     Votante ..> MerkleTree : acredita pertenencia via proof
     Votante ..> MerkleProof : solicita on-demand
+    Votante ..> ContratoBoleta : emite sufragio con proof
     MerkleTree ..> MerkleProof : genera on-demand
     MerkleTree ..> AlmacenRaizMerkle : ancla raíz
+    ContratoBoleta ..> AlmacenRaizMerkle : consulta raíz vigente
+    ContratoBoleta ..> MerkleProof : verifica on-chain
     PadronElectoral ..> PublicacionMerkle : registra publicación
 
     Lista ..> ResultadoValidacionMinimos : evalúa cupos
@@ -357,5 +368,6 @@ classDiagram
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain."
+    note for ContratoBoleta "VOTAR-339: BallotContract.castVote valida\nMerkleProof contra raíz anclada.\nRevierte InvalidMerkleProof si falla."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
     note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto."

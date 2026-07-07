@@ -117,7 +117,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Contrato | Rol |
 |---|---|
 | `ElectionFactory.sol` | Despliega conjunto de contratos por comicio. Patrón UUPS Proxy Factory |
-| `BallotContract.sol` | Orquesta `castVote()`: valida Merkle Proof, firma ECDSA, política re-voto. Patrón CEI + ReentrancyGuard |
+| `BallotContract.sol` | Orquesta `castVote()`: valida Merkle Proof contra `MerkleRootStore` (US-339, error `InvalidMerkleProof`). Futuro: firma ECDSA, política re-voto, VoteRegistry, TallyContract. Patrón CEI + ReentrancyGuard + `whenNotPaused` |
 | `VoteRegistry.sol` | Estado canónico de sufragios por nullifier. Soporta sobrescritura (LAST_WINS) |
 | `TallyContract.sol` | Contadores incrementales por candidato. Resultados en tiempo real |
 | `AuditViewContract.sol` | Funciones `view/pure` para auditores externos (no muta estado) |
@@ -147,7 +147,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
   6. blockchainClient envía castVote(payload, sig, proof) → RPC → BallotContract
   7. BallotContract:
      a. Consulta MerkleRoot activa
-     b. MerkleProof.verify(proof, root, leaf) ← verifica padrón
+     b. MerkleProof.verify(proof, root, leaf) ← verifica padrón; revierte `InvalidMerkleProof` si falla (US-339)
      c. ECDSA.recover(payload, sig) ← verifica Firma Digital (Ley 25.506)
      d. Valida política re-voto (RevoteConfig)
      e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS)

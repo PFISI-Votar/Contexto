@@ -301,8 +301,8 @@ model {
       // Patrón CEI + ReentrancyGuard + Pausable.
       ballotContract = component "BallotContract.sol" {
         #web3
-        technology "Solidity / UUPSUpgradeable"
-        description "Orquesta castVote(): valida ventana temporal, Merkle Proof (padrón), firma ECDSA (Ley 25.506) y política de voto múltiple. Aplica modifiers: enforceRevoteLimits(nullifier) → revert si !revoteEnabled && voteCount[nullifier]>0; revert si voteCount[nullifier] >= maxVotesPerVoter; revert si block.timestamp - lastVoteTs[nullifier] < minIntervalSeconds (custom errors: RevoteDisabled, MaxVotesReached, RetryTooSoon(remainingSeconds)). Delega al VoteRegistry y notifica al TallyContract. Soporta candidateId reservados BLANCO/NULO. Patrón CEI + ReentrancyGuard"
+        technology "Solidity / VotarAccessControl + MerkleProof (OZ v5)"
+        description "US-339: castVote(electionId, voterLeaf, merkleProof) valida pertenencia al padrón consultando MerkleRootStore y ejecutando MerkleProof.verify contra la raíz anclada. Leaf = standardLeafHash(bytes32 hash_hoja) compatible con StandardMerkleTree del backend. Revierte InvalidMerkleProof si la rama no coincide; MerkleRootNotPublished si no hay raíz. Emite VoteCast al persistir. Futuro: firma ECDSA, política re-voto, VoteRegistry y TallyContract. Patrón CEI + whenNotPaused"
       }
 
       // ── Registro de Votos (estado canónico de sufragios) ────────────
@@ -612,7 +612,7 @@ views {
     votar.bud.blockchainClient -> rpc "8. Envía castVote(payload, sig, proof) a la red"
     rpc -> votar.contracts.ballotContract "9. Transmite transacción castVote() a la EVM"
     votar.contracts.ballotContract -> votar.contracts.merkleRootStore "10. Consulta Merkle Root activa del comicio"
-    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "11. MerkleProof.verify(proof, root, leaf): valida padrón"
+    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "11. MerkleProof.verify(proof, root, leaf): valida padrón; revierte InvalidMerkleProof si falla (US-339)"
     votar.contracts.ballotContract -> votar.contracts.ozECDSA "12. ECDSA.recover: verifica Firma Digital del votante (Ley 25.506)"
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "13. Registra/sobrescribe voto por nullifier (último voto cuenta)"
     votar.contracts.ballotContract -> votar.contracts.tallyContract "14. Actualiza contadores por delta"
