@@ -1,0 +1,96 @@
+# Sync C4 diagrams from Contexto (source of truth) to PFISI-Votar/c4.
+#
+# Always copies diagramas/sprint-N/votar.c4 from the highest sprint-* folder
+# and opens/updates a PR in c4 for human review (no auto-merge).
+#
+# Required GitHub App (installed on PFISI-Votar/c4 with Contents + Pull requests write):
+#   - Repository variable: C4_SYNC_APP_CLIENT_ID   (App client ID)
+#   - Repository secret:   C4_SYNC_APP_PRIVATE_KEY (App private key PEM)
+#
+# Setup: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/making-authenticated-api-requests-with-a-github-app-in-a-github-actions-workflow
+
+name: Sync C4 to c4 repo
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "diagramas/**/*.c4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-c4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Open PR in c4
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Contexto
+        uses: actions/checkout@v5
+
+      - name: Generate GitHub App token for c4
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.C4_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.C4_SYNC_APP_PRIVATE_KEY }}
+          owner: PFISI-Votar
+          repositories: c4
+
+      - name: Checkout c4
+        uses: actions/checkout@v5
+        with:
+          repository: PFISI-Votar/c4
+          token: ${{ steps.app-token.outputs.token }}
+          path: c4-repo
+          persist-credentials: false
+
+      - name: Sync latest sprint votar.c4
+        id: sync
+        run: |
+          set -euo pipefail
+          LATEST_SPRINT="$(find diagramas -maxdepth 1 -type d -name 'sprint-*' | sort -V | tail -n 1)"
+          SOURCE="${LATEST_SPRINT}/votar.c4"
+          if [[ ! -f "${SOURCE}" ]]; then
+            echo "::error::No votar.c4 found in ${LATEST_SPRINT}"
+            exit 1
+          fi
+          {
+            echo "source=${SOURCE}"
+            echo "sprint=$(basename "${LATEST_SPRINT}")"
+          } >> "${GITHUB_OUTPUT}"
+          cp "${SOURCE}" c4-repo/votar.c4
+          echo "Synced ${SOURCE} -> c4-repo/votar.c4 (Contexto is source of truth)"
+
+      - name: Create or update PR in c4
+        id: c4-pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          path: c4-repo
+          commit-message: "docs: sync votar.c4 from Contexto (${{ steps.sync.outputs.sprint }})"
+          branch: chore/sync-from-contexto
+          delete-branch: true
+          title: "docs: sync votar.c4 from Contexto (${{ steps.sync.outputs.sprint }})"
+          body: |
+            ## Summary
+            Auto-sync from **Contexto** (fuente de verdad de los diagramas C4).
+
+            | | |
+            |---|---|
+            | Origen | `${{ steps.sync.outputs.source }}` en `dev` |
+            | Commit Contexto | ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }} |
+            | Autor | @${{ github.actor }} |
+
+            Revisar y mergear manualmente. El CI de `c4` valida el modelo LikeC4.
+
+      - name: PR result
+        run: |
+          echo "pull-request-number=${{ steps.c4-pr.outputs.pull-request-number }}"
+          echo "pull-request-url=${{ steps.c4-pr.outputs.pull-request-url }}"
+          echo "pull-request-operation=${{ steps.c4-pr.outputs.pull-request-operation }}"
