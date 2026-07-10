@@ -136,7 +136,7 @@ model {
       technology "React.js"
       description "Interfaz para la gestión institucional del padrón y reglas electorales"
 
-      adminAuth = component "Módulo de Autenticación Admin" {
+      adminAuth = component "Módulo de Autenticación admin" {
         technology "React / TanStack Router / cookies HttpOnly"
         description "Login Panel de Gestión vía Autogestión UTN delegada al backend BFF (US-313). Mantiene sesión con cookies HttpOnly y estado de usuario en memoria; el guard consulta user.role=election_admin desde /auth/login, /auth/me o /auth/refresh (la validación autoritativa del JWT y del rol ocurre en backend). Ante acceso forzado sin rol, sondea GET /elecciones para obtener HTTP 403 y auditoría backend antes de mostrar /403"
       }
