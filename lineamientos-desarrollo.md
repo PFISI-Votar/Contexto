@@ -68,7 +68,6 @@
 ### 2.5. Diagramas y artefactos de diseño
 
 - [ ] **Actualizar diagramas si la tarea modifica** entidades, relaciones, cardinalidades, flujos o componentes (§6).
-- [ ] **Registrar el cambio en** `Contexto/diagramas/CambiosIA.md`.
 
 ### 2.6. Control de versiones
 
@@ -215,22 +214,21 @@ Los diagramas en `Contexto/diagramas/` son artefactos oficiales del proyecto. **
 
 ```
 diagramas/
-├── CambiosIA.md          # bitácora de cambios (raíz)
 ├── sprint-0/             # diagramas del Sprint 0
 │   ├── Diagrama Entidad Relación - Sprint 0 - PFISI.mmd
 │   ├── Diagrama de clases - Sprint 0 - PFISI(1).mmd
 │   └── votar.c4
-└── sprint-1/             # diagramas del Sprint 1
-    ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
-    ├── Diagrama de clases - Sprint 1 - PFISI.mmd
-    └── votar.c4
+├── sprint-1/             # diagramas del Sprint 1
+│   ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
+│   ├── Diagrama de clases - Sprint 1 - PFISI.mmd
+│   └── votar.c4
 └── sprint-2/             # diagramas del Sprint 2
     ├── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
     ├── Diagrama de clases - Sprint 2 - PFISI.mmd
     └── votar.c4
 ```
 
-Cada sprint tiene su carpeta (`sprint-N/`). DER, diagrama de clases y C4 (`votar.c4`) viven dentro de la carpeta del sprint al que corresponden. Solo `CambiosIA.md` permanece en la raíz de `diagramas/`.
+Cada sprint tiene su carpeta (`sprint-N/`). DER, diagrama de clases y C4 (`votar.c4`) viven dentro de la carpeta del sprint al que corresponden.
 
 ### 6.1. Cuándo actualizar
 
@@ -247,16 +245,7 @@ Cada sprint tiene su carpeta (`sprint-N/`). DER, diagrama de clases y C4 (`votar
 2. **Crear nueva versión** en la carpeta del sprint correspondiente:
    - Ejemplo DER: `diagramas/sprint-0/Diagrama Entidad Relación - Sprint 0 - PFISI.mmd` → `diagramas/sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
    - Ejemplo C4: `diagramas/sprint-0/votar.c4` → `diagramas/sprint-1/votar.c4`
-3. **Registrar en** `Contexto/diagramas/CambiosIA.md`:
-
-```markdown
-## [YYYY-MM-DD] — [Nombre del archivo base]
-- **Tipo de cambio**: [descripción breve]
-- **Motivo**: [US o razón técnica, ej. US-330]
-- **Archivo nuevo**: [nombre del archivo versionado]
-```
-
-4. Si el cambio proviene de una US, referenciar el **ID de Jira** en el motivo.
+3. Si el cambio proviene de una US, referenciar el **ID de Jira** en el commit o en la descripción del cambio.
 
 ---
 
@@ -348,7 +337,7 @@ Estados: `BORRADOR → CONFIGURADA → ABIERTA → CERRADA → ESCRUTADA`.
 feat(padron): add CSV import endpoint with Keccak-256 anonymization
 fix(auth): change token expiry comparison to inclusive bound
 refactor(eleccion): rename estado field for consistency
-docs(diagramas): add CambiosIA entry for Sprint 1 ER update
+docs(diagramas): update Sprint 1 ER diagram with MerkleTree entity
 build(backend): upgrade typeorm to 0.3.20
 test(padron): add assertion for plaintext absence in padron rows
 feat(api): document eleccion endpoints with Swagger decorators
@@ -448,7 +437,7 @@ export class RecursoController {}
 - **Secretos en repo:** usar `.env` (referenciar `.env.example`).
 - **Violaciones de privacidad:** FK votante↔voto, persistir MerkleProof, guardar claves privadas.
 - **Escritura en blockchain en BORRADOR.**
-- **Editar diagramas sin versionar** ni registrar en `CambiosIA.md`.
+- **Editar diagramas sin versionar** en la carpeta del sprint correspondiente.
 - **Endpoints sin Swagger.**
 - **Merge sin tests pasando.**
 - **Archivos markdown no solicitados** (README, docs extra) salvo que la tarea lo requiera.
@@ -475,7 +464,6 @@ Al finalizar una tarea, el agente debe reportar:
 
 ### Diagramas
 - [ ] Actualizados: [archivo nuevo o N/A]
-- [ ] Entrada en CambiosIA.md: [sí/no/N/A]
 
 ### Commits sugeridos
 - `feat(modulo): add ...`
@@ -498,7 +486,7 @@ Al finalizar una tarea, el agente debe reportar:
 | Commits y branching | `Contexto/md/03 ... Ciclo de Vida ... v2.0.2.md` §Plan de Gestión de la Configuración |
 | Reglas de negocio | `Contexto/md/01 ... Propuesta y Alcance ... v2.1.0.md` |
 | Historias de usuario | Jira + `Contexto/md/01 ... Sprint 0 ... v1.8.3.md` |
-| Cambios en diagramas | `Contexto/diagramas/CambiosIA.md` |
+| Diagramas por sprint | `Contexto/diagramas/sprint-N/` |
 | Hook Swagger (Claude Code) | `Contexto/claude/.claude/hookify.require-swagger-docs.local.md` |
 
 ---
