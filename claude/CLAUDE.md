@@ -105,7 +105,6 @@ codigo/
 ├── front/         # React SPA
 │   └── src/       # App.tsx, components/ui/ (shadcn), lib/utils.ts
 └── diagramas/     # Diagramas de referencia por sprint
-    ├── CambiosIA.md
     ├── sprint-0/  # DER, clases y votar.c4 del Sprint 0
     ├── sprint-1/  # DER, clases y votar.c4 del Sprint 1
     └── sprint-2/  # DER, clases y votar.c4 del Sprint 2 (VOTAR-334 Merkle)
@@ -115,19 +114,10 @@ codigo/
 
 ## Norma: Gestión de diagramas en `diagramas/`
 
-Los archivos en `diagramas/sprint-N/` (`.mmd` y `votar.c4`) son documentos de referencia por sprint. Cualquier modificación que afecte el contenido de un diagrama **requiere obligatoriamente**:
+Los archivos en `diagramas/sprint-N/` (`.mmd` y `votar.c4`) son documentos de referencia por sprint. Cualquier modificación que afecte el contenido de un diagrama **requiere obligatoriamente** crear una nueva versión del archivo en la carpeta del sprint correspondiente. Naming convention:
 
-1. **Crear una nueva versión del archivo** en la carpeta del sprint correspondiente. Naming convention:
-   - Sprint 0: `diagramas/sprint-0/Diagrama Entidad Relación - Sprint 0 - PFISI.mmd`, `diagramas/sprint-0/votar.c4`
-   - Sprint 1: `diagramas/sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`, `diagramas/sprint-1/votar.c4` (o el sprint/versión correspondiente)
-
-2. **Agregar una entrada en `diagramas/CambiosIA.md`** con el siguiente formato:
-   ```
-   ## [Fecha ISO] — [Nombre del archivo modificado]
-   - **Tipo de cambio**: [descripción breve]
-   - **Motivo**: [razón del cambio]
-   - **Archivo nuevo**: [nombre del nuevo archivo versionado]
-   ```
+- Sprint 0: `diagramas/sprint-0/Diagrama Entidad Relación - Sprint 0 - PFISI.mmd`, `diagramas/sprint-0/votar.c4`
+- Sprint 1: `diagramas/sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`, `diagramas/sprint-1/votar.c4` (o el sprint/versión correspondiente)
 
 Esta norma aplica a cualquier modificación, incluyendo correcciones de atributos, relaciones nuevas, eliminación de entidades o cambios de cardinalidad.
 
@@ -183,7 +173,7 @@ Usar **verbo imperativo**: cada commit se debe poder leer como una instrucción 
 feat(padron): add CSV import endpoint with Keccak-256 anonymization
 fix(auth): change token expiry comparison to inclusive bound
 refactor(eleccion): rename estado field for consistency
-docs(diagramas): add CambiosIA entry for Sprint 1 ER update
+docs(diagramas): update Sprint 1 ER diagram with MerkleTree entity
 build(backend): upgrade typeorm to 0.3.20
 test(padron): add UAT-02 assertion for plaintext absence
 ```
