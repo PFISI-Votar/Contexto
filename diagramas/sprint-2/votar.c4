@@ -127,8 +127,8 @@ model {
         description "Solicita el Merkle Proof correspondiente al API Backend"
       }
       blockchainClient = component "Cliente Blockchain BUD" {
-        technology "Ethers.js"
-        description "Construye la transacción Web3, adjunta la firma y la envía al nodo RPC"
+        technology "viem"
+        description "VOTAR-358: ensambla castSignedVote (nullifier, selectionHash, merkleProof, signature EIP-712), estima gas (+10%), reintenta errores de red (máx. 3) y espera confirmación. El gas lo paga un transmitter de plataforma (testnet); la firma del voto sigue siendo de la billetera efímera"
       }
     }
     
@@ -301,8 +301,8 @@ model {
       // Patrón CEI + ReentrancyGuard + Pausable.
       ballotContract = component "BallotContract.sol" {
         #web3
-        technology "Solidity / VotarAccessControl + MerkleProof (OZ v5)"
-        description "US-339: castVote(electionId, voterLeaf, merkleProof) valida pertenencia al padrón consultando MerkleRootStore y ejecutando MerkleProof.verify contra la raíz anclada. Leaf = standardLeafHash(bytes32 hash_hoja) compatible con StandardMerkleTree del backend. Revierte InvalidMerkleProof si la rama no coincide; MerkleRootNotPublished si no hay raíz. Emite VoteCast al persistir. Futuro: firma ECDSA, política re-voto, VoteRegistry y TallyContract. Patrón CEI + whenNotPaused"
+        technology "Solidity / VotarAccessControl + MerkleProof + EIP-712 (OZ v5)"
+        description "US-339: castVote(electionId, voterLeaf, merkleProof). VOTAR-357/358: castSignedVote(..., nullifier, selectionHash, timestamp, expectedSigner, signature) valida Merkle + EIP-712 y rechaza NullifierAlreadyUsed. Emite SignedVoteCast. Leaf = standardLeafHash(bytes32 hash_hoja). Patrón CEI + whenNotPaused"
       }
 
       // ── Registro de Votos (estado canónico de sufragios) ────────────
@@ -465,13 +465,13 @@ model {
   votar.api.merklePublisherService -> votar.api.dataAccess "Actualiza MERKLE_TREE (PUBLICADO_ON_CHAIN, tx_hash)" { technology "TypeORM" }
 
   // Frontends -> Blockchain (Web3)
-  votar.bud.blockchainClient -> rpc "Envía transacción de voto anónimo firmado (Payload + Proof)" { technology "JSON-RPC/HTTPS" }
+  votar.bud.blockchainClient -> rpc "Envía castSignedVote (payload + proof + firma); transmitter paga gas" { technology "JSON-RPC/HTTPS" }
   votar.dashboard.blockScanner -> rpc "Consulta logs, eventos y estado del contrato" { technology "JSON-RPC/HTTPS" }
   votar.dashboard.localVerifier -> votar.dashboard.blockScanner "Valida prueba contra raíz on-chain"
 
   // RPC -> Smart Contracts
   rpc -> votar.contracts.electionFactory "Proxy para createElection() (DEFAULT_ADMIN_ROLE)"
-  rpc -> votar.contracts.ballotContract "Proxy para castVote() y lecturas de estado"
+  rpc -> votar.contracts.ballotContract "Proxy para castSignedVote()/castVote() y lecturas de estado"
   rpc -> votar.contracts.merkleRootStore "Proxy para publishRoot() (MERKLE_UPDATER_ROLE)"
   rpc -> votar.contracts.tallyContract "Lecturas view del escrutinio para Dashboard"
   rpc -> votar.contracts.auditViewContract "Lecturas pure/view para auditores externos"
@@ -608,14 +608,14 @@ views {
     sso -> votar.api.jwtValidator "4. Retorna claims de identidad legal"
     votar.api.identityDecoupler -> votar.api.merkleBuilder "5. Genera credencial anónima y calcula Merkle Proof off-chain"
     votar.api.apiRouter -> votar.bud.proofRequester "6. Entrega Merkle Proof del votante"
-    votar.bud.cryptoEngine -> votar.bud.blockchainClient "7. Firma sufragio (ECDSA) y calcula nulificador localmente"
-    votar.bud.blockchainClient -> rpc "8. Envía castVote(payload, sig, proof) a la red"
-    rpc -> votar.contracts.ballotContract "9. Transmite transacción castVote() a la EVM"
+    votar.bud.cryptoEngine -> votar.bud.blockchainClient "7. Firma sufragio EIP-712 y calcula nulificador localmente"
+    votar.bud.blockchainClient -> rpc "8. Envía castSignedVote(payload, sig, proof) a la red (transmitter paga gas)"
+    rpc -> votar.contracts.ballotContract "9. Transmite transacción castSignedVote() a la EVM"
     votar.contracts.ballotContract -> votar.contracts.merkleRootStore "10. Consulta Merkle Root activa del comicio"
     votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "11. MerkleProof.verify(proof, root, leaf): valida padrón; revierte InvalidMerkleProof si falla (US-339)"
-    votar.contracts.ballotContract -> votar.contracts.ozECDSA "12. ECDSA.recover: verifica Firma Digital del votante (Ley 25.506)"
+    votar.contracts.ballotContract -> votar.contracts.ozECDSA "12. ECDSA.recover: verifica firma EIP-712 del votante (VOTAR-357)"
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "13. Registra/sobrescribe voto por nullifier (último voto cuenta)"
     votar.contracts.ballotContract -> votar.contracts.tallyContract "14. Actualiza contadores por delta"
-    votar.contracts.ballotContract -> ethereum "15. Emite VoteCast(electionId, nullifier, candidateId, isOverwrite)"
+    votar.contracts.ballotContract -> ethereum "15. Emite SignedVoteCast(electionId, voterLeaf, nullifier, selectionHash, signer)"
   }
 }
