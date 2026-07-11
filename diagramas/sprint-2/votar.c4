@@ -244,7 +244,7 @@ model {
       }
       votoModule = component "Módulo Voto (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "GET /elecciones/:idEleccion/boleta-digital devuelve la BUD oficializada. GET /elecciones/:idEleccion/merkle-proof (VOTAR-354): Merkle Proof autenticada para votante (JWT + rate limit IP). POST /elecciones/:idEleccion/votos/confirmar registra recepción off-chain con votante_hash, idempotency_key, payload_hash y comprobante_hash; no almacena selección en claro"
+        description "GET /elecciones/:idEleccion/boleta-digital y GET .../merkle-proof (VOTAR-354). VOTAR-379: sin POST votos/confirmar ni tabla puente identidad↔voto; sufragio solo on-chain"
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
@@ -269,13 +269,9 @@ model {
         technology "PostgreSQL Schema"
         description "PADRON_ELECTORAL (hash_padron = raíz Merkle compacta), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb, tx_hash_publicacion — VOTAR-334 + US-335)"
       }
-      votoConfirmacionSchema = component "Tabla voto_confirmacion" {
-        technology "PostgreSQL Table"
-        description "Recepción BUD off-chain: id_eleccion, votante_hash, idempotency_key, payload_hash, comprobante_hash, estado RECIBIDO y recibido_en. Solo hashes + idempotencia, sin selección en claro"
-      }
       auditLogSchema = component "Esquema de Audit Log" {
         technology "PostgreSQL Schema (append-only)"
-        description "Bitácora inmutable de operaciones administrativas y técnicas para auditoría normativa"
+        description "Bitácora inmutable. VOTAR-379: VOTO_EMITIDO sin IP/UA/session/votanteHash; ip_origen nullable"
       }
     }
 
@@ -418,7 +414,7 @@ model {
   votar.panel.ofertaElectoralPanel -> votar.api.apiRouter "CRUD listas/candidatos y oficialización" { technology "JSON/HTTPS" }
   votar.panel.configDatosCandidatoPanel -> votar.api.apiRouter "Guarda definición de campos dinámicos" { technology "JSON/HTTPS" }
   votar.panel.revoteConfigurator -> votar.api.apiRouter "Envía RevoteConfig para validación y persistencia" { technology "JSON/HTTPS" }
-  votar.bud.selection -> votar.api.apiRouter "Consulta BUD y confirma recepción idempotente (GET /elecciones/:idEleccion/boleta-digital, POST /elecciones/:idEleccion/votos/confirmar)" { technology "JSON/HTTPS" }
+  votar.bud.selection -> votar.api.apiRouter "Consulta BUD (GET /elecciones/:idEleccion/boleta-digital, GET .../merkle-proof). Sufragio on-chain sin JWT (VOTAR-379)" { technology "JSON/HTTPS" }
   votar.bud.ballot -> votar.api.apiRouter "Consulta intentos restantes y próximo retry permitido" { technology "JSON/HTTPS" }
   votar.dashboard.statsViewer -> votar.api.apiRouter "Consulta reportes institucionales y metadatos off-chain" { technology "JSON/HTTPS" }
 
@@ -428,8 +424,8 @@ model {
   votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
   votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
-  votar.api.apiRouter -> votar.api.votoModule "Enruta BUD y confirmación de voto (US-355)"
-  votar.api.votoModule -> votar.api.dataAccess "Lee boleta oficializada y registra voto_confirmacion idempotente"
+  votar.api.apiRouter -> votar.api.votoModule "Enruta BUD (boleta + merkle-proof; VOTAR-379 sin confirmación off-chain)"
+  votar.api.votoModule -> votar.api.dataAccess "Lee boleta oficializada; no persiste vínculo identidad↔voto"
   votar.api.apiRouter -> votar.api.revotePolicyService "Persiste/consulta política de voto múltiple"
   votar.api.revotePolicyService -> votar.api.rulesEngine "Valida coherencia de RevoteConfig"
   votar.api.revotePolicyService -> votar.api.dataAccess "Persiste config en electionSchema"
@@ -456,8 +452,7 @@ model {
   votar.api.dataAccess -> votar.db.electionSchema "Lee/escribe comicios y direcciones de contrato" { technology "TCP/IP" }
   votar.api.dataAccess -> votar.db.candidateSchema "Lee/escribe categorías, listas y candidatos" { technology "TCP/IP" }
   votar.api.dataAccess -> votar.db.voterSchema "Lee/escribe hashes de padrón" { technology "TCP/IP" }
-  votar.api.dataAccess -> votar.db.votoConfirmacionSchema "Inserta/consulta confirmaciones BUD por votante_hash e idempotency_key" { technology "TCP/IP" }
-  votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora" { technology "TCP/IP" }
+  votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora (VOTO_EMITIDO anónimo — VOTAR-379)" { technology "TCP/IP" }
 
   // Panel Admin -> Blockchain (publicación de raíz)
   votar.panel.rootPublisher -> votar.api.merklePublisherService "POST /padron/merkle/publicar" { technology "HTTPS / JSON" }

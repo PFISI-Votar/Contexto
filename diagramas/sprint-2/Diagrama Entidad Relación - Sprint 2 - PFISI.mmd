@@ -248,19 +248,9 @@ erDiagram
         int id_candidato FK "Candidato seleccionado (null si voto en blanco)"
     }
 
-    %% Capa off-chain BUD: recepción e idempotencia sin selección en claro.
-    %% No reemplaza al VOTO anónimo ni persiste candidatos seleccionados.
-    %% Restricciones: UNIQUE(id_eleccion, votante_hash) y UNIQUE(id_eleccion, idempotency_key).
-    VOTO_CONFIRMACION {
-        uuid id_voto_confirmacion PK "Identificador de la confirmación off-chain (US BUD)"
-        int id_eleccion FK "Comicio confirmado"
-        string votante_hash "Hash de sesión/padrón (64 hex). Anti doble voto pre-chain"
-        uuid idempotency_key "Clave idempotente del cliente"
-        string payload_hash "SHA-256 del payload confirmado (sin selección en claro)"
-        string comprobante_hash "SHA-256 del comprobante devuelto al votante"
-        string estado "RECIBIDO"
-        datetime recibido_en "Timestamp de recepción"
-    }
+    %% VOTAR-379: eliminada VOTO_CONFIRMACION (vinculaba votante_hash ↔ payload_hash).
+    %% La evidencia del sufragio queda on-chain (castSignedVote). Riesgo residual:
+    %% voterLeaf viaja en calldata/evento on-chain (Merkle sin ZK — fuera de alcance).
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% TRANSACCIONES BLOCKCHAIN (Registro off-chain de txs on-chain)
@@ -322,13 +312,13 @@ erDiagram
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | CONTRATO_DESPLEGADO"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO"
         datetime timestamp "Timestamp del evento"
-        string actor "Identificador del actor (autoridad/sistema)"
+        string actor "Actor (ANONIMO para VOTO_EMITIDO — VOTAR-379)"
         string descripcion "Descripción del evento"
         string hash_registro "Hash del registro para integridad"
-        string ip_origen "IP de origen del evento"
-        string datos_adicionales "JSON con datos extra del evento"
+        string ip_origen "IP nullable; prohibida en VOTO_EMITIDO (VOTAR-379)"
+        string datos_adicionales "JSON sin campos joinables a SSO en eventos de voto"
     }
 
     ACTIVIDAD_ELECTORAL {
@@ -403,9 +393,8 @@ erDiagram
     OBSERVADOR ||--o{ OBSERVADOR_ELECCION : "tiene asignaciones"
     ELECCION ||--o{ OBSERVADOR_ELECCION : "observada por"
 
-    %% --- Votos anónimos (SIN FK a Votante — Ley 25.326) ---
+    %% --- Votos anónimos (SIN FK a Votante — Ley 25.326 / VOTAR-379) ---
     ELECCION ||--o{ VOTO : "recibe"
-    ELECCION ||--o{ VOTO_CONFIRMACION : "registra confirmaciones BUD"
     VOTO ||--|{ VOTO_DETALLE : "contiene"
     VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
