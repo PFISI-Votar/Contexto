@@ -42,11 +42,6 @@ classDiagram
         DISABLED
     }
 
-    class VotoConfirmacionEstado {
-        <<enumeration>>
-        RECIBIDO
-    }
-
     class MerkleTreeEstado {
         <<enumeration>>
         GENERADO
@@ -157,18 +152,6 @@ classDiagram
         +definirMetodosAutenticacion(metodos MetodoAutenticacion[]) void
         +validarMetodosAutenticacion() boolean
         +validarConfiguracion() boolean
-    }
-
-    class VotoConfirmacion {
-        -UUID idVotoConfirmacion
-        -int idEleccion
-        -String votanteHash
-        -UUID idempotencyKey
-        -String payloadHash
-        -String comprobanteHash
-        -VotoConfirmacionEstado estado
-        -DateTime recibidoEn
-        +esIdempotenteCon(otro VotoConfirmacion) boolean
     }
 
     class AutoridadElectoral {
@@ -321,7 +304,6 @@ classDiagram
     Eleccion "1" *-- "1" Boleta : publica
     Eleccion "1" *-- "0..1" ConfiguracionDatosCandidato : define campos
     Eleccion "1" *-- "0..1" PadronElectoral : habilita
-    Eleccion "1" -- "0..*" VotoConfirmacion : registra
 
     Boleta "1" *-- "1..*" Categoria : organiza roles
     Boleta "1" *-- "0..*" Lista : contiene
@@ -352,7 +334,6 @@ classDiagram
     Categoria ..> ResultadoValidacionMinimos : define mínimos
     Eleccion --> EleccionEstado : estado
     Eleccion --> TipoVotacion : modalidad
-    VotoConfirmacion --> VotoConfirmacionEstado : estado
     ConfiguracionComicio --> MetodoAutenticacion : acceso votantes
     ConfiguracionComicio --> PoliticaRevoto : revoto
     MerkleTree --> MerkleTreeEstado : estado
@@ -363,11 +344,10 @@ classDiagram
     PadronElectoral --> Hash : hash_padron
 
     note for Eleccion "US-316: inicializarEnBorrador() crea el proceso\nen capa relacional sin despliegue blockchain.\nUS-319: oficializarOferta() bloqueada si alguna\nlista no alcanza minimoPostulantes por categoría."
-    note for VotoConfirmacion "US-355: recepción off-chain de BUD;\nsolo hashes + idempotencia, sin selección en claro.\nUnicidad por (eleccion, votanteHash) y\n(eleccion, idempotencyKey)."
     note for PadronVotante "US-330: solo hash Keccak-256 (DNI+email).\nSin FK a Votante ni PII en texto plano (Ley 25.326)."
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain."
-    note for ContratoBoleta "VOTAR-339: BallotContract.castVote valida\nMerkleProof contra raíz anclada.\nRevierte InvalidMerkleProof si falla."
+    note for ContratoBoleta "VOTAR-339: BallotContract.castVote valida\nMerkleProof contra raíz anclada.\nRevierte InvalidMerkleProof si falla.\nVOTAR-379: voterLeaf en calldata/evento es riesgo residual sin ZK."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
-    note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto."
+    note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."
