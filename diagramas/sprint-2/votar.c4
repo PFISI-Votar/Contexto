@@ -208,7 +208,7 @@ model {
       }
       lifecycleManager = component "Gestor de Ciclo de Vida Electoral" {
         technology "Node.js Service"
-        description "Crea, abre, cierra (manual/automático) y archiva comicios. Coordina publicación de Merkle Root on-chain previa a apertura y disparo de eventos de cierre"
+        description "VOTAR-320/321: crea, abre y cierra comicios (manual POST /abrir|/cerrar + schedulers por fechaInicio/fechaFin). En apertura sincroniza setElectionWindow + OPEN; en cierre sincroniza CLOSED, congela snapshot del dashboard (mostrar_resultados_tiempo_real=false) y emite WebSocket. Intentos de voto post-cierre → HTTP 410 Gone"
       }
       voterCsvProcessor = component "Procesador de Padrón" {
         technology "PapaParse / Pandas + Joi"
@@ -244,7 +244,7 @@ model {
       }
       votoModule = component "Módulo Voto (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "GET /elecciones/:idEleccion/boleta-digital y GET .../merkle-proof (VOTAR-354). VOTAR-379: sin POST votos/confirmar ni tabla puente identidad↔voto; sufragio solo on-chain"
+        description "GET /elecciones/:idEleccion/boleta-digital y GET .../merkle-proof (VOTAR-354). VOTAR-379: sin POST votos/confirmar ni tabla puente identidad↔voto; sufragio solo on-chain. VOTAR-321: si el comicio está CERRADA/ESCRUTADA responde HTTP 410 Gone; configuracion-bud expone resultadosDefinitivos/snapshotCongelado"
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
@@ -298,7 +298,7 @@ model {
       ballotContract = component "BallotContract.sol" {
         #web3
         technology "Solidity / VotarAccessControl + MerkleProof + EIP-712 (OZ v5)"
-        description "US-339: castVote(electionId, voterLeaf, merkleProof). VOTAR-357/358: castSignedVote(..., nullifier, selectionHash, timestamp, expectedSigner, signature) valida Merkle + EIP-712 y rechaza NullifierAlreadyUsed. Emite SignedVoteCast. Leaf = standardLeafHash(bytes32 hash_hoja). Patrón CEI + whenNotPaused"
+        description "US-339: castVote(electionId, voterLeaf, merkleProof). VOTAR-357/358: castSignedVote(..., nullifier, selectionHash, timestamp, expectedSigner, signature) valida Merkle + EIP-712 y rechaza NullifierAlreadyUsed. VOTAR-321: _assertElectionAcceptingVotes consulta MerkleRootStore (estado OPEN + endTime) y revierte ElectionClosed si CLOSED/TALLIED o block.timestamp >= endTime. Emite SignedVoteCast. Leaf = standardLeafHash(bytes32 hash_hoja). Patrón CEI + whenNotPaused"
       }
 
       // ── Registro de Votos (estado canónico de sufragios) ────────────
@@ -333,8 +333,8 @@ model {
       // ── Almacenamiento de Merkle Roots ───────────────────────────────
       merkleRootStore = component "MerkleRootStore.sol" {
         #web3
-        technology "Solidity Smart Contract (US-335 implementado)"
-        description "Almacena Merkle Roots por electionId (MERKLE_UPDATER_ROLE). publishRoot() emite RootPublished(electionId, root, timestamp). Contrato compartido interim hasta US-337 (factory per-comicio)"
+        technology "Solidity Smart Contract (US-335/336/321)"
+        description "Almacena Merkle Roots por electionId (MERKLE_UPDATER_ROLE). publishRoot() + RootPublished. VOTAR-336: ElectionState (DRAFT→TALLIED) y RootLocked. VOTAR-321: setElectionWindow(start,end) / getElectionEndTime para cierre autónomo por block.timestamp. setElectionState(CLOSED) en cierre manual"
       }
 
       // ── Base RBAC (US-349 — implementado) ───────────────────────────
@@ -425,7 +425,7 @@ model {
   votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
   votar.api.apiRouter -> votar.api.votoModule "Enruta BUD (boleta + merkle-proof; VOTAR-379 sin confirmación off-chain)"
-  votar.api.votoModule -> votar.api.dataAccess "Lee boleta oficializada; no persiste vínculo identidad↔voto"
+  votar.api.votoModule -> votar.api.dataAccess "Lee boleta oficializada; si CERRADA/ESCRUTADA responde HTTP 410 Gone (VOTAR-321); no persiste vínculo identidad↔voto"
   votar.api.apiRouter -> votar.api.revotePolicyService "Persiste/consulta política de voto múltiple"
   votar.api.revotePolicyService -> votar.api.rulesEngine "Valida coherencia de RevoteConfig"
   votar.api.revotePolicyService -> votar.api.dataAccess "Persiste config en electionSchema"
@@ -442,8 +442,9 @@ model {
   votar.api.merkleBuilder -> votar.api.dataAccess "Persiste raíz y hojas del padrón"
   votar.api.identityDecoupler -> votar.api.merkleBuilder "Solicita hoja Merkle del votante validado"
   votar.api.rulesEngine -> votar.api.dataAccess "Consulta configuración y candidatos"
-  votar.api.lifecycleManager -> votar.api.dataAccess "Actualiza estado del comicio"
-  votar.api.lifecycleManager -> votar.api.auditLogger "Registra apertura/cierre"
+  votar.api.lifecycleManager -> votar.api.dataAccess "Actualiza estado del comicio (ABIERTA/CERRADA) y congela snapshot del dashboard"
+  votar.api.lifecycleManager -> votar.api.auditLogger "Registra apertura/cierre (COMICIO_ABIERTO / COMICIO_CERRADO)"
+  votar.api.lifecycleManager -> rpc "setElectionWindow + setElectionState(OPEN|CLOSED) en MerkleRootStore" { technology "JSON-RPC/HTTPS" }
   votar.api.reportGenerator -> votar.api.dataAccess "Lee datos relacionales"
   votar.api.reportGenerator -> rpc "Consulta resultados/eventos on-chain" { technology "JSON-RPC/HTTPS" }
   votar.api.apiRouter -> votar.api.auditLogger "Registra acciones críticas"
@@ -483,7 +484,7 @@ model {
   votar.contracts.votarAccessControl -> votar.contracts.ozPausable "Extiende Pausable; pause/unpause con PAUSER_ROLE"
   votar.contracts.electionFactory -> votar.contracts.ozAccessControl "Configura roles iniciales en deployment"
 
-  votar.contracts.ballotContract -> votar.contracts.merkleRootStore "Consulta Merkle Root activa en castVote()"
+  votar.contracts.ballotContract -> votar.contracts.merkleRootStore "Consulta Merkle Root + ElectionState/endTime en castVote()/castSignedVote()"
   votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "MerkleProof.verify(proof, root, leaf): valida padrón"
   votar.contracts.ballotContract -> votar.contracts.ozECDSA "ECDSA.recover(payload, sig): verifica Firma Digital (Ley 25.506)"
   votar.contracts.ballotContract -> votar.contracts.voteRegistry "Lee voteCount/lastVoteTs, valida RevoteConfig y registra/sobrescribe voto (LAST_WINS)"
