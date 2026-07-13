@@ -103,7 +103,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 
 | Componente | Rol |
 |---|---|
-| `jwtValidator` | Valida tokens SSO (OAuth2/OIDC) contra JWKS |
+| `jwtValidator` | Valida JWT vía JWKS (RS256) + claims iss/aud/exp; 401 → auditLogger (VOTAR-314). Login interino Autogestión (US-313) en Modo A |
 | `identityDecoupler` | Separa criptográficamente identidad→voto (Ley 25.326) |
 | `merkleBuilder` | Construye Merkle Tree (keccak256), genera proofs bajo demanda |
 | `voterCsvProcessor` | Parsea CSV, deduplica, hashea votantes |
