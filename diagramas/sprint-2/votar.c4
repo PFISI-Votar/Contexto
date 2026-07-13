@@ -195,8 +195,8 @@ model {
         description "Expone endpoints REST versionados para BUD, Panel y Dashboard. Rate limiting + CORS"
       }
       jwtValidator = component "Validador JWT / OIDC" {
-        technology "NestJS Passport JWT + Autogestión UTN (US-313)"
-        description "US-313 (interino): valida credenciales contra API Autogestión UTN, emite JWT propio (HS256) con claim role (election_admin | voter) según AUTORIDAD_ELECTORAL; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
+        technology "NestJS Passport JWT + JWKS (RS256)"
+        description "VOTAR-314: verifica firma RS256 vía JWKS y claims iss/aud/exp en cada request; rechazo → HTTP 401 + auditLogger. Modo A (interino): BFF firma RS256 y publica /auth/.well-known/jwks.json. Modo B: JWT_JWKS_URI del IdP (solo verificar tokens SSO). Login US-313: Autogestión UTN emite sesión local en Modo A. RolesGuard: 403 + auditLogger"
       }
       rulesEngine = component "Motor de Reglas Electorales" {
         technology "TypeScript / Pydantic"
@@ -419,8 +419,8 @@ model {
   votar.dashboard.statsViewer -> votar.api.apiRouter "Consulta reportes institucionales y metadatos off-chain" { technology "JSON/HTTPS" }
 
   // Flujo interno API Backend
-  votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT en cada request"
-  votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN; emite JWT de sesión con rol" { technology "HTTPS" }
+  votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT (JWKS + iss/aud/exp) en cada request; 401 → auditLogger"
+  votar.api.jwtValidator -> sso "US-313: login Autogestión + emisión JWT local (Modo A); Modo B: descarga JWKS del IdP" { technology "HTTPS" }
   votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
   votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
