@@ -249,34 +249,31 @@ erDiagram
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
-    %% VOTO_CONFIRMACION (VOTAR-360: Recibo blockchain con UUID E2E)
-    %% Reintroducida para almacenar metadatos de confirmación post-blockchain.
-    %% NO vincula votante_hash ↔ payload_hash de forma única (permite re-voto).
-    %% Constraint único: (id_eleccion, idempotency_key) basado en nullifier.
+    %% RECIBO DE PARTICIPACIÓN (VOTAR-360) — artefacto client-side + on-chain
+    %% VOTAR-379 eliminó VOTO_CONFIRMACION (puente votante_hash ↔ payload).
+    %% El recibo PDF se genera SOLO en el navegador (no se almacena en servidor).
+    %% Clave de verificación pública = TransactionHash (evento SignedVoteCast).
+    %% FirmaDigital = firma ECDSA del sistema sobre payload canónico
+    %% (ElectionID|txHash|blockNumber|timestamp), sin persistir el PDF.
+    %% Entidades aspiracionales (no TypeORM en Sprint 2):
     %% ═══════════════════════════════════════════════════════════════════════
 
-    VOTO_CONFIRMACION {
-        uuid id_voto_confirmacion PK "Identificador único de la confirmación"
-        int id_eleccion FK "Elección asociada"
-        string votante_hash "Hash anónimo del votante (no único por elección)"
-        uuid idempotency_key UK "Clave de idempotencia (derivada del nullifier)"
-        string payload_hash "Hash del payload del voto"
-        string comprobante_hash "Hash del comprobante (payload + txHash)"
-        string estado "RECIBIDO"
-        datetime recibido_en "Timestamp de recepción en backend"
-        string tx_hash "Hash de la transacción blockchain (0x...)"
-        int block_number "Número de bloque donde se confirmó"
-        datetime tx_timestamp "Timestamp de la transacción blockchain"
-        string tx_status "PENDIENTE | CONFIRMADA | FALLIDA"
-        uuid codigo_verificacion_e2e UK "UUID para verificación E2E (generado auto)"
-        string contract_address "Dirección del smart contract"
+    TRANSACCION_BLOCKCHAIN {
+        string hash_transaccion UK "TransactionHash on-chain (clave de verificación E2E)"
+        int id_eleccion "Elección del evento SignedVoteCast"
+        int numero_bloque "Bloque de inclusión"
+        datetime timestamp "Timestamp del bloque"
+        string estado "CONFIRMADA (status=1 + SignedVoteCast)"
+        string direccion_contrato "BallotContract"
     }
 
-    %% ═══════════════════════════════════════════════════════════════════════
-    %% NOTA: TRANSACCION_BLOCKCHAIN y RECIBO_VOTACION fueron unificadas en
-    %% VOTO_CONFIRMACION (VOTAR-360). La nueva entidad integra metadatos de
-    %% blockchain + código de verificación E2E en una sola tabla.
-    %% ═══════════════════════════════════════════════════════════════════════
+    RECIBO_VOTACION {
+        string hash_transaccion UK "Mismo TransactionHash del QR / portal /verificar"
+        int id_eleccion "ElectionID impreso en el PDF"
+        datetime timestamp "Timestamp impreso en el PDF"
+        string firma_digital "FirmaDigital del sistema de auditoría"
+        string origen "CLIENT_SIDE_PDF — nunca persistido en BD"
+    }
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% BILLETERA EFÍMERA (sin FK permanente al Votante)
@@ -402,10 +399,10 @@ erDiagram
     VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
 
-    %% --- Confirmación de voto blockchain (VOTAR-360) ---
-    %% Permite re-voto: 1:N (múltiples confirmaciones por elección)
-    %% Anti-replay garantizado por (id_eleccion, idempotency_key) basado en nullifier
-    ELECCION ||--o{ VOTO_CONFIRMACION : "registra confirmaciones"
+    %% --- Recibo / verificación (VOTAR-360, sin tabla off-chain de identidad) ---
+    %% Evidencia on-chain: SignedVoteCast → TRANSACCION_BLOCKCHAIN (derivada)
+    %% Recibo PDF: RECIBO_VOTACION client-side ligado solo por hash_transaccion
+    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "materializa PDF local"
 
     %% --- Billetera efímera (sin FK permanente a Votante) ---
     BILLETERA_EFIMERA ||--o{ VOTO : "firma"

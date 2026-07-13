@@ -4,28 +4,21 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
-## [2026-07-12] — Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
+## [2026-07-13] — Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
 
-- **Tipo de cambio**: Actualización de entidad existente + eliminación de constraint
+- **Tipo de cambio**: Corrección de modelo de recibo (alineado a VOTAR-379 + VOTAR-360)
 - **Motivo**:
-  - Reintroducir entidad `VOTO_CONFIRMACION` que fue marcada como eliminada (VOTAR-379) pero existe en el código actual
-  - Eliminar constraint `@Unique(['idEleccion', 'votanteHash'])` para permitir re-voto (política `LAST_VOTE_WINS`)
-  - Unificar `TRANSACCION_BLOCKCHAIN` y `RECIBO_VOTACION` en una sola entidad `VOTO_CONFIRMACION` (VOTAR-360)
-  - Soportar verificación E2E con UUID auto-generado por TypeORM
+  - No reintroducir `VOTO_CONFIRMACION` (eliminada en VOTAR-379: desvinculación identidad↔voto)
+  - Documentar verificación pública por `TransactionHash` on-chain (`SignedVoteCast`)
+  - Documentar recibo PDF como artefacto **client-side** con `FirmaDigital` del sistema, sin persistencia en BD
 
 - **Cambios específicos**:
-  1. Agregada entidad `VOTO_CONFIRMACION` con todos los campos de la migración `1782160000000-VotoConfirmacion.ts` + campos blockchain de `1782600000000-AddReciboBlockchainFields.ts`
-  2. Eliminado constraint único `(id_eleccion, votante_hash)` - ahora permite múltiples votos del mismo votante por elección
-  3. Mantenido constraint único `(id_eleccion, idempotency_key)` para anti-replay via nullifier
-  4. Agregado campo `codigo_verificacion_e2e` (UUID) auto-generado para verificación pública
-  5. Documentado que `TRANSACCION_BLOCKCHAIN` y `RECIBO_VOTACION` fueron unificadas en `VOTO_CONFIRMACION`
-  6. Agregada relación `ELECCION ||--o{ VOTO_CONFIRMACION` (1:N - permite múltiples confirmaciones)
+  1. Eliminada entidad `VOTO_CONFIRMACION` del DER Sprint 2
+  2. Modeladas entidades aspiracionales `TRANSACCION_BLOCKCHAIN` y `RECIBO_VOTACION` (no TypeORM): clave = `hash_transaccion`
+  3. Relación `TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION` (PDF local materializa la evidencia on-chain)
+  4. Anotado: portal `GET /recibos/verificar/:txHash` + `POST /recibos/firmar` sin almacenar PDF
 
-- **Migración asociada**: `1783903956193-migration.ts`
-  - Elimina `UQ_voto_confirmacion_eleccion_votante`
-  - Mantiene `UQ_voto_confirmacion_eleccion_idempotency`
-
-- **User Stories relacionadas**: VOTAR-360 (Generación y verificación de recibo criptográfico)
+- **User Stories relacionadas**: VOTAR-360 (recibo criptográfico), VOTAR-379 (voto anónimo)
 
 - **Archivo modificado**: `Contexto/diagramas/sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
 
