@@ -4,6 +4,28 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-07-13] — Sprint 3 (nueva carpeta) + VOTAR-350 / VOTAR-346
+
+- **Tipo de cambio**: Versionado de sprint + alineación on-chain de auditoría pública
+- **Motivo**:
+  - Abrir `diagramas/sprint-3/` conforme a la norma (no editar in-place Sprint 2)
+  - Documentar `AuditViewContract` y views de `VoteRegistry` implementadas en VOTAR-350
+  - Alinear C4/`VoteRegistry` con el evento `VoteCast` de VOTAR-346
+
+- **Cambios específicos**:
+  1. Creada carpeta `diagramas/sprint-3/` (DER, clases, C4, secuencia de cierre heredada)
+  2. C4: `AuditViewContract` con `getElectionState`, `getParticipationStats`, `getVotesByCandidate`, `verifyReceipt`
+  3. C4: `VoteRegistry` con tallies + views; `BallotContract` delega `recordVote`
+  4. Diagrama de clases: `RegistroVoto`, `VistaAuditoria`, `StatsParticipacion`
+  5. Nueva secuencia `secuencia-consulta-auditoria-votar-350.mmd` (UAT-01..04)
+  6. DER Sprint 3: sin cambio de esquema relacional (auditoría es on-chain)
+
+- **User Stories relacionadas**: VOTAR-350 (views de auditoría), VOTAR-346 (VoteCast)
+
+- **Archivos**: `Contexto/diagramas/sprint-3/*`
+
+---
+
 ## [2026-07-13] — Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
 
 - **Tipo de cambio**: Corrección de modelo de recibo (alineado a VOTAR-379 + VOTAR-360)

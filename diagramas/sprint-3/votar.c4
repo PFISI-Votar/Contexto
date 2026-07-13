@@ -1,0 +1,616 @@
+specification {
+  // ─────────────────────────
+  // Tipos de Elementos
+  // ─────────────────────────
+  element actor {
+    notation "Persona"
+    style { shape person; color primary }
+  }
+  
+  element system {
+    notation "Sistema de Software"
+    style { shape rectangle; color primary }
+  }
+  
+  element externalSystem {
+    notation "Sistema Externo"
+    style { shape rectangle; color muted }
+  }
+  
+  element frontend {
+    notation "Contenedor: Web SPA"
+    style { shape browser; color blue }
+  }
+  
+  element backend {
+    notation "Contenedor: API REST"
+    style { shape component; color blue }
+  }
+  
+  element database {
+    notation "Contenedor: Base de Datos"
+    style { shape storage; color blue }
+  }
+  
+  element smartcontract {
+    notation "Contenedor: Smart Contracts"
+    style { shape component; color indigo; border dashed }
+  }
+
+  // Nueva distinción: librería OZ vs contrato propio
+  element ozlibrary {
+    notation "Librería OpenZeppelin"
+    style { shape component; color green; border dashed }
+  }
+  
+  element component {
+    notation "Componente de Software"
+    style { shape component; color secondary }
+  }
+
+  // ─────────────────────────
+  // Etiquetas para Semántica
+  // ─────────────────────────
+  tag web3
+  tag offchain
+  tag e2e
+  tag openzeppelin
+  tag security
+}
+
+model {
+  // ─────────────────────────
+  // Actores
+  // ─────────────────────────
+  votante = actor "Votante" {
+    description "Ciudadano empadronado con derecho a sufragio"
+  }
+  
+  autoridad = actor "Autoridad Electoral" {
+    description "Administrador responsable del ciclo de vida del comicio"
+  }
+  
+  auditor = actor "Auditor" {
+    description "Observador público interesado en la integridad del escrutinio"
+  }
+
+  // ─────────────────────────
+  // Sistemas Externos
+  // ─────────────────────────
+  sso = externalSystem "SSO Institucional" {
+    technology "OAuth 2.0 / OpenID Connect"
+    description "Proveedor de identidad de la institución (Ej. CEUTI / UTN FRVM)"
+  }
+  
+  rpc = externalSystem "Proveedor de Nodos RPC" {
+    #web3
+    technology "Infura / Alchemy"
+    description "Gateway HTTP/WebSocket para interactuar con la cadena de bloques"
+  }
+  
+  ethereum = externalSystem "Red Ethereum" {
+    #web3
+    technology "Sepolia Testnet / EVM"
+    description "Blockchain pública para el registro inmutable y descentralizado de sufragios"
+  }
+
+  // ─────────────────────────
+  // Sistema Principal y Contenedores
+  // ─────────────────────────
+  votar = system "Plataforma VOTAR" {
+    description "Ecosistema de votación descentralizada garantizando anonimato y verificabilidad E2E"
+
+    // Capa Frontend
+    bud = frontend "Boleta Única Digital (BUD)" {
+      #e2e
+      technology "React.js / Ethers.js"
+      description "Interfaz para selección de candidatos, generación de claves ECC y firma de transacciones"
+
+      auth = component "Módulo de Autenticación BUD" {
+        technology "React Context / OIDC"
+        description "Gestiona el inicio de sesión y obtención del token SSO para el votante"
+      }
+      ballot = component "Selector de Candidatos" {
+        technology "React Component"
+        description "Interfaz para la selección de boletas y candidatos"
+      }
+      selection = component "Confirmación de Boleta Única Digital" {
+        technology "React Component / Fetch API"
+        description "Consulta la boleta digital del comicio y confirma el voto con clave idempotente. Envía solo hashes de recepción al backend; no persiste selección en claro"
+      }
+      cryptoEngine = component "Generador Criptográfico" {
+        technology "Web Crypto API"
+        description "Genera claves efímeras ECC, firma sufragios y calcula nulificadores en el cliente"
+      }
+      proofRequester = component "Manejador de Pruebas" {
+        technology "Fetch API"
+        description "Solicita el Merkle Proof correspondiente al API Backend"
+      }
+      blockchainClient = component "Cliente Blockchain BUD" {
+        technology "viem"
+        description "VOTAR-358: ensambla castSignedVote (nullifier, selectionHash, merkleProof, signature EIP-712), estima gas (+10%), reintenta errores de red (máx. 3) y espera confirmación. El gas lo paga un transmitter de plataforma (testnet); la firma del voto sigue siendo de la billetera efímera"
+      }
+    }
+    
+    panel = frontend "Panel de Administración" {
+      technology "React.js"
+      description "Interfaz para la gestión institucional del padrón y reglas electorales"
+
+      adminAuth = component "Módulo de Autenticación admin" {
+        technology "React / TanStack Router / cookies HttpOnly"
+        description "Login Panel de Gestión vía Autogestión UTN delegada al backend BFF (US-313). Mantiene sesión con cookies HttpOnly y estado de usuario en memoria; el guard consulta user.role=election_admin desde /auth/login, /auth/me o /auth/refresh (la validación autoritativa del JWT y del rol ocurre en backend). Ante acceso forzado sin rol, sondea GET /elecciones para obtener HTTP 403 y auditoría backend antes de mostrar /403"
+      }
+      voterManager = component "Cargador de Padrón" {
+        technology "React / PapaParse"
+        description "Permite cargar, validar y procesar la lista de votantes habilitados"
+      }
+      electionConfig = component "Configurador de Comicios" {
+        technology "React / react-hook-form / Zod"
+        description "Formulario /comicios/nuevo: alta en BORRADOR con nombre, fechas UTC ISO8601, tipo de votación (POR_CANDIDATO | POR_LISTA | MIXTO), roles dinámicos con límite de postulantes, métodos de autenticación (Google, SSO Institucional — mín. 1) y validación client-side antes de POST /elecciones (US-316)"
+      }
+      ofertaElectoralPanel = component "Gestor de Oferta Electoral" {
+        technology "React / TanStack Query / Zod"
+        description "CRUD de listas y candidatos, acordeón de candidatos por lista, confirmación antes de oficializar comicio y visualización del mapeo list_id (US-318)"
+      }
+      configDatosCandidatoPanel = component "Configurador Datos Candidato" {
+        technology "React / react-hook-form"
+        description "Define campos dinámicos por comicio (clave, tipo, obligatoriedad, validaciones). Bloqueo si hay candidatos registrados o comicio oficializado"
+      }
+      revoteConfigurator = component "Configurador de Voto Múltiple" {
+        technology "React Form / Zod"
+        description "Panel para autoridad: habilita/inhabilita re-voto, define maxVotesPerVoter (1..N), minIntervalSeconds entre re-votos y política de cómputo (último voto cuenta). Valida coherencia y previsualiza impacto antes de guardar"
+      }
+      rootPublisher = component "Publicador de Raíz Merkle" {
+        technology "React / TanStack Query"
+        description "US-335: botón «Publicar Raíz on-chain» en panel de padrón; invoca POST /padron/merkle/publicar y muestra tx hash + enlace Etherscan"
+      }
+    }
+    
+    dashboard = frontend "Dashboard Público" {
+      technology "React.js / Ethers.js"
+      description "Plataforma de auditoría ciudadana y visualización de resultados en tiempo real"
+
+      statsViewer = component "Visualizador de Resultados" {
+        technology "React / Chart.js"
+        description "Presenta estadísticas de participación y gráficos de escrutinio en tiempo real"
+      }
+      blockScanner = component "Escáner Blockchain" {
+        technology "Ethers.js"
+        description "Monitorea directamente los logs y eventos emitidos por los Smart Contracts"
+      }
+      localVerifier = component "Verificador de Voto" {
+        technology "React / Merkle-Lib"
+        description "Permite al ciudadano verificar de manera offline/online que su voto fue computado"
+      }
+    }
+
+    // Capa Backend Tradicional
+    api = backend "API Backend" {
+      #offchain
+      technology "Node.js (Express) / Python (FastAPI)"
+      description "Motor off-chain de desvinculación de identidad, construcción de Árboles de Merkle, validación de reglas electorales y orquestación del ciclo de vida del comicio (Ley 25.326 PII nunca toca on-chain)"
+
+      apiRouter = component "Controlador de Rutas API" {
+        technology "Express / FastAPI / OpenAPI 3.1"
+        description "Expone endpoints REST versionados para BUD, Panel y Dashboard. Rate limiting + CORS"
+      }
+      jwtValidator = component "Validador JWT / OIDC" {
+        technology "NestJS Passport JWT + Autogestión UTN (US-313)"
+        description "US-313 (interino): valida credenciales contra API Autogestión UTN, emite JWT propio (HS256) con claim role (election_admin | voter) según AUTORIDAD_ELECTORAL; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
+      }
+      rulesEngine = component "Motor de Reglas Electorales" {
+        technology "TypeScript / Pydantic"
+        description "Valida reglas de negocio antes de oficializar: mínimo de candidatos, voto en blanco habilitado, ventanas temporales, bajas/sucesiones bloqueadas tras inicio, y política de voto múltiple (revoteEnabled, maxVotesPerVoter ≥1, minIntervalSeconds ≥0, coherencia con ventana del comicio)"
+      }
+      revotePolicyService = component "Servicio de Política de Re-voto" {
+        technology "Node.js Service"
+        description "Materializa la política configurada por la autoridad: persiste {revoteEnabled, maxVotesPerVoter, minIntervalSeconds, tallyPolicy=LAST_WINS}, sincroniza parámetros con el deployment del BallotContract vía ElectionFactory y expone consulta al BUD para UI/feedback (intentos restantes, próximo reintento)"
+      }
+      lifecycleManager = component "Gestor de Ciclo de Vida Electoral" {
+        technology "Node.js Service"
+        description "VOTAR-320/321: crea, abre y cierra comicios (manual POST /abrir|/cerrar + schedulers por fechaInicio/fechaFin). En apertura sincroniza setElectionWindow + OPEN; en cierre sincroniza CLOSED, congela snapshot del dashboard (mostrar_resultados_tiempo_real=false) y emite WebSocket. Intentos de voto post-cierre → HTTP 410 Gone"
+      }
+      voterCsvProcessor = component "Procesador de Padrón" {
+        technology "PapaParse / Pandas + Joi"
+        description "Parsea CSV, normaliza identidades, deduplica, calcula hash de cada votante (sin almacenar PII en claro) y entrega listado al merkleBuilder"
+      }
+      identityDecoupler = component "Servicio de Desvinculación de Identidad" {
+        technology "Node.js Crypto / cryptography (Py)"
+        description "Garantiza separación criptográfica identidad→voto: emite credencial anónima vinculada a la hoja Merkle del votante autenticado; no persiste la asociación (compliance Ley 25.326)"
+      }
+      merkleBuilder = component "Constructor de Árboles de Merkle" {
+        technology "@openzeppelin/merkle-tree (StandardMerkleTree)"
+        description "VOTAR-334: construye árbol Merkle Keccak-256 determinístico al importar CSV; persiste raíz + tree_dump en MERKLE_TREE; expone GET /padron/merkle y GET /votantes/:hashHoja/proof (admin). VOTAR-354: GET /elecciones/:id/merkle-proof (voter autenticado, JWT). Proofs on-demand, NO persistidas por votante (lineamientos §7.1)"
+      }
+      merklePublisherService = component "Publicador Merkle On-Chain (US-335)" {
+        technology "NestJS BlockchainModule / ethers v6"
+        description "POST /elecciones/:id/padron/merkle/publicar: firma publishRoot(electionId, root) en MerkleRootStore (MERKLE_UPDATER_ROLE), persiste tx_hash en MERKLE_TREE y emite RootPublished"
+      }
+      padronModule = component "Módulo Padrón (NestJS)" {
+        technology "NestJS 11 / TypeORM"
+        description "Import CSV (US-330/331), GET /padron/merkle (VOTAR-334), POST /padron/merkle/publicar (US-335). Merkle proofs on-demand sin persistir PII"
+      }
+      reportGenerator = component "Generador de Reportes Institucionales" {
+        technology "Node.js / ReportLab"
+        description "Emite documentación oficial: acta de apertura/cierre, padrón firmado, reporte de participación. Consume eventos on-chain + datos relacionales"
+      }
+      auditLogger = component "Registro de Auditoría (Audit Log)" {
+        technology "TypeORM / PostgreSQL append-only"
+        description "Registra ACCESO_DENEGADO (actor, IP, endpoint, timestamp) ante HTTP 403 por rol insuficiente (US-313); el modelo contempla otros eventos críticos (LOGIN, PADRON_CARGADO, COMICIO_ABIERTO, etc.) para evolución posterior. Inmutable a nivel aplicación"
+      }
+      eleccionModule = component "Módulo Elección (NestJS)" {
+        technology "NestJS 11 / TypeORM"
+        description "POST /elecciones: crea comicio en BORRADOR (elección, boleta, categorías/roles, configuracion_comicio, configuracion_datos_candidato) en transacción ACID sin escrituras Sepolia. Valida fechas futuras, roles y auth (422). Sanitiza entrada. Subdominios lista/ y candidato/: CRUD, oficialización list_id (US-316 + US-318)"
+      }
+      votoModule = component "Módulo Voto (NestJS)" {
+        technology "NestJS 11 / TypeORM"
+        description "GET /elecciones/:idEleccion/boleta-digital y GET .../merkle-proof (VOTAR-354). VOTAR-379: sin POST votos/confirmar ni tabla puente identidad↔voto; sufragio solo on-chain. VOTAR-321: si el comicio está CERRADA/ESCRUTADA responde HTTP 410 Gone; configuracion-bud expone resultadosDefinitivos/snapshotCongelado"
+      }
+      dataAccess = component "Acceso a Datos (DAO)" {
+        technology "Prisma / SQLAlchemy"
+        description "Gestiona consultas y escrituras a la Base de Datos Relacional con transacciones ACID"
+      }
+    }
+
+    db = database "Base de Datos Relacional" {
+      #offchain
+      technology "PostgreSQL 16"
+      description "Persistencia de configuración institucional, padrón hasheado y bitácora de auditoría. NO almacena votos ni vínculo identidad→sufragio"
+
+      electionSchema = component "Esquema de Comicios" {
+        technology "PostgreSQL Schema"
+        description "Tablas eleccion (tipo_votacion, estado BORRADOR), configuracion_comicio (metodos_autenticacion[], politica_revoto), ventanas temporales, parámetros de re-voto y direcciones de contratos/Merkle Roots (solo post-borrador). Política US-316: sin txs Sepolia en alta BORRADOR"
+      }
+      candidateSchema = component "Esquema de Categorías y Listas" {
+        technology "PostgreSQL Schema (candidateSchema)"
+        description "Boleta, categorías, listas (list_id post-oficialización), candidatos (datos_adicionales JSONB), configuracion_datos_candidato y campo_datos_candidato"
+      }
+      voterSchema = component "Esquema de Padrón" {
+        technology "PostgreSQL Schema"
+        description "PADRON_ELECTORAL (hash_padron = raíz Merkle compacta), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb, tx_hash_publicacion — VOTAR-334 + US-335)"
+      }
+      auditLogSchema = component "Esquema de Audit Log" {
+        technology "PostgreSQL Schema (append-only)"
+        description "Bitácora inmutable. VOTAR-379: VOTO_EMITIDO sin IP/UA/session/votanteHash; ip_origen nullable"
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Capa Descentralizada — Ecosistema On-Chain (reworked)
+    // ─────────────────────────────────────────────────────────────────
+    contracts = smartcontract "Ecosistema On-Chain" {
+      #web3
+      technology "Solidity ^0.8.24 / OpenZeppelin v5 / Ethereum Sepolia"
+      description "Contratos inteligentes que implementan la lógica electoral inmutable: validación de padrón vía Merkle, verificación de Firma Digital (Ley 25.506), unicidad del voto con regla ‘último voto cuenta’, escrutinio público y auditoría on-chain"
+
+      // ── Patrón Factory ──────────────────────────────────────────────
+      // Estándar (Uniswap V2/V3, Aragon) para instanciar contratos hijos
+      // sin acoplamiento directo entre autoridad y contratos de elección.
+      electionFactory = component "ElectionFactory.sol" {
+        #web3
+        technology "Solidity / UUPS Proxy Factory"
+        description "Despliega y registra instancias de BallotContract + VoteRegistry + TallyContract + AuditView por comicio. Recibe struct RevoteConfig{bool enabled; uint16 maxVotesPerVoter; uint32 minIntervalSeconds; TallyPolicy policy} en createElection() e inmutabiliza la política tras apertura. Solo DEFAULT_ADMIN_ROLE (Multisig). Emite ElectionCreated(electionId, ballot, tally, revoteConfig)"
+      }
+
+      // ── Contrato de Votación Principal ──────────────────────────────
+      // Separado para cumplir responsabilidad única.
+      // Patrón CEI + ReentrancyGuard + Pausable.
+      ballotContract = component "BallotContract.sol" {
+        #web3
+        technology "Solidity / VotarAccessControl + MerkleProof + EIP-712 (OZ v5)"
+        description "US-339: castVote(electionId, voterLeaf, merkleProof, candidateId). VOTAR-357/358: castSignedVote(..., nullifier, selectionHash, timestamp, expectedSigner, signature, candidateId) valida Merkle + EIP-712 y rechaza NullifierAlreadyUsed. VOTAR-321: ElectionClosed si CLOSED/TALLIED o block.timestamp >= endTime. VOTAR-346: delega recordVote a VoteRegistry (voterHash=nullifier en firmado). Emite SignedVoteCast (recibo). Leaf = standardLeafHash(bytes32). whenNotPaused"
+      }
+
+      // ── Registro de Votos (estado canónico de sufragios) ────────────
+      // Reemplaza al simple NullifierRegistry para soportar la regla de
+      // negocio "Unicidad del voto": un votante puede re-emitir; solo
+      // cuenta el último voto registrado antes del cierre.
+      voteRegistry = component "VoteRegistry.sol" {
+        #web3 #security
+        technology "Solidity / VotarAccessControl (VOTAR-346/350)"
+        description "Registro canónico keyed por voterHash anónimo (nullifier). recordVote solo BALLOT_ROLE + whenNotPaused. Emite VoteCast(electionId indexed, voterHash indexed, candidateId, isOverwrite) sin wallet. Tallies O(1) incl. VOTO_BLANCO/VOTO_NULO. VOTAR-350 views: getParticipationStats, getVotesByCandidate, verifyReceipt(receiptHash=voterHash). Pause no bloquea lecturas"
+      }
+
+      // ── Contador / Escrutinio ───────────────────────────────────────
+      // Contadores incrementales con compensación (decrementar viejo,
+      // incrementar nuevo) para soportar re-voto en O(1) sin recorrer
+      // el VoteRegistry completo.
+      tallyContract = component "TallyContract.sol" {
+        #web3
+        technology "Solidity Smart Contract"
+        description "Mantiene mapping(electionId => mapping(candidateId => uint256)) con contadores actualizados por delta en cada castVote (incluye contadores reservados para blanco y nulo). Expone resultados parciales/finales vía view functions consumidas por Dashboard"
+      }
+
+      // ── Contrato de Verificación y Auditoría Pública ────────────────
+      // Capa view/pure desacoplada del estado mutable, según Scope:
+      // "Smart Contract de Verificación y Auditoría Pública".
+      auditViewContract = component "AuditViewContract.sol" {
+        #web3
+        technology "Solidity Smart Contract (view) — VOTAR-350"
+        description "Fachada pública sin gas para auditores: getElectionState(electionId), getParticipationStats → (totalVotes, blankVotes, nullVotes), getVotesByCandidate(electionId, candidateId) → 0 si desconocido, verifyReceipt(receiptHash) → bool (ancla nullifier/voterHash, sin identidad). Delega a MerkleRootStore + VoteRegistry. Sin whenNotPaused: lecturas disponibles con registro en pausa (UAT-04)"
+      }
+
+      // ── Almacenamiento de Merkle Roots ───────────────────────────────
+      merkleRootStore = component "MerkleRootStore.sol" {
+        #web3
+        technology "Solidity Smart Contract (US-335/336/321)"
+        description "Almacena Merkle Roots por electionId (MERKLE_UPDATER_ROLE). publishRoot() + RootPublished. VOTAR-336: ElectionState (DRAFT→TALLIED) y RootLocked. VOTAR-321: setElectionWindow(start,end) / getElectionEndTime para cierre autónomo por block.timestamp. setElectionState(CLOSED) en cierre manual"
+      }
+
+      // ── Base RBAC (US-349 — implementado) ───────────────────────────
+      votarAccessControl = component "VotarAccessControl.sol" {
+        #web3 #security
+        technology "Solidity ^0.8.24 / OpenZeppelin AccessControl + Pausable"
+        description "Base abstracta RBAC del ecosistema (US-349). Roles: DEFAULT_ADMIN_ROLE (Multisig/Governor al deploy), PAUSER_ROLE, MERKLE_UPDATER_ROLE, BALLOT_ROLE. Constructor asigna admin; grant/revoke emite RoleGranted/RoleRevoked. Desplegado en Sepolia vía AccessControlHarness para UAT. Contratos electorales futuros heredan esta base"
+      }
+
+      accessControlHarness = component "AccessControlHarness.sol" {
+        #web3 #security
+        technology "Solidity / mock de integración"
+        description "Contrato concreto de prueba US-349: hereda VotarAccessControl y expone updateMerkleRoot (MERKLE_UPDATER_ROLE) y recordBallotOp (BALLOT_ROLE + whenNotPaused). Sepolia: 0x55d1d115309872C16B9646362C82fFa246F3F652"
+      }
+
+      // ── Librería OZ: MerkleProof ─────────────────────────────────────
+      ozMerkleProof = ozlibrary "OZ: MerkleProof.sol" {
+        #openzeppelin
+        technology "OpenZeppelin v5 / Solidity Library"
+        description "Verifica criptográficamente la pertenencia de una hoja al árbol vía MerkleProof.verify(proof, root, leaf). No se deploya por separado"
+      }
+
+      // ── Librería OZ: ECDSA ───────────────────────────────────────────
+      // Verificación de Firma Digital del votante on-chain
+      // (cumplimiento Ley 25.506 + presunción de autoría).
+      ozECDSA = ozlibrary "OZ: ECDSA.sol" {
+        #openzeppelin #security
+        technology "OpenZeppelin v5 / Solidity Library"
+        description "Recupera y valida la dirección firmante del payload del voto (ECDSA.recover sobre EIP-191/EIP-712). Sustento técnico de la Firma Digital exigida por Ley 25.506"
+      }
+
+      // ── Librería OZ: AccessControl ───────────────────────────────────
+      ozAccessControl = ozlibrary "OZ: AccessControl.sol" {
+        #openzeppelin #security
+        technology "OpenZeppelin v5 / Solidity Library"
+        description "Librería base RBAC de OpenZeppelin. VotarAccessControl la extiende con roles PAUSER, MERKLE_UPDATER y BALLOT; DEFAULT_ADMIN_ROLE centraliza grant/revoke hacia Multisig/Governor"
+      }
+
+      // ── Librería OZ: Pausable ────────────────────────────────────────
+      ozPausable = ozlibrary "OZ: Pausable.sol" {
+        #openzeppelin #security
+        technology "OpenZeppelin v5 / Solidity Library"
+        description "Circuit Breaker. Modifier whenNotPaused sobre castVote(). Solo PAUSER_ROLE pausa/reanuda ante incidentes de seguridad"
+      }
+    }
+  }
+
+  // ─────────────────────────
+  // Relaciones
+  // ─────────────────────────
+  
+  // Actores -> Frontends
+  votante -> votar.bud.auth "Se autentica para iniciar sesión" { technology "HTTPS" }
+  votante -> votar.bud.ballot "Selecciona candidatos y emite voto" { technology "UI" }
+  autoridad -> votar.panel.adminAuth "Se autentica como administrador" { technology "HTTPS" }
+  autoridad -> votar.panel.voterManager "Carga y valida el padrón de votantes" { technology "HTTPS" }
+  autoridad -> votar.panel.electionConfig "Configura parámetros y comicios" { technology "HTTPS" }
+  autoridad -> votar.panel.ofertaElectoralPanel "Gestiona listas, candidatos y oficialización" { technology "HTTPS" }
+  autoridad -> votar.panel.configDatosCandidatoPanel "Define campos adicionales de candidatos" { technology "HTTPS" }
+  autoridad -> votar.panel.revoteConfigurator "Define política de voto múltiple (habilitación, máx intentos, intervalo)" { technology "HTTPS" }
+  autoridad -> votar.panel.rootPublisher "Publica Merkle Root on-chain antes de abrir comicio" { technology "HTTPS / Web3" }
+  auditor -> votar.dashboard.statsViewer "Visualiza estadísticas de participación" { technology "HTTPS" }
+  auditor -> votar.dashboard.localVerifier "Verifica integridad del sufragio de forma local" { technology "HTTPS" }
+
+  // Flujo interno BUD
+  votar.bud.auth -> votar.bud.proofRequester "Provee identidad validada para solicitar Merkle Proof"
+  votar.bud.ballot -> votar.bud.selection "Entrega selección revisada para confirmar BUD"
+  votar.bud.selection -> votar.bud.cryptoEngine "Calcula payload_hash y comprobante_hash sin persistir selección en claro"
+  votar.bud.ballot -> votar.bud.cryptoEngine "Envía selección para firmar y procesar"
+  votar.bud.cryptoEngine -> votar.bud.blockchainClient "Entrega voto firmado, nulificador y parámetros"
+  votar.bud.proofRequester -> votar.bud.blockchainClient "Entrega Merkle Proof para la transacción"
+
+  // Frontends -> API Backend
+  votar.bud.proofRequester -> votar.api.apiRouter "Solicita Merkle Proof autenticado" { technology "JSON/HTTPS" }
+  votar.panel.voterManager -> votar.api.apiRouter "Envía CSV de padrón para procesamiento" { technology "multipart/HTTPS" }
+  votar.panel.electionConfig -> votar.api.apiRouter "Crea comicio en BORRADOR (POST /elecciones)" { technology "JSON/HTTPS" }
+  votar.panel.ofertaElectoralPanel -> votar.api.apiRouter "CRUD listas/candidatos y oficialización" { technology "JSON/HTTPS" }
+  votar.panel.configDatosCandidatoPanel -> votar.api.apiRouter "Guarda definición de campos dinámicos" { technology "JSON/HTTPS" }
+  votar.panel.revoteConfigurator -> votar.api.apiRouter "Envía RevoteConfig para validación y persistencia" { technology "JSON/HTTPS" }
+  votar.bud.selection -> votar.api.apiRouter "Consulta BUD (GET /elecciones/:idEleccion/boleta-digital, GET .../merkle-proof). Sufragio on-chain sin JWT (VOTAR-379)" { technology "JSON/HTTPS" }
+  votar.bud.ballot -> votar.api.apiRouter "Consulta intentos restantes y próximo retry permitido" { technology "JSON/HTTPS" }
+  votar.dashboard.statsViewer -> votar.api.apiRouter "Consulta reportes institucionales y metadatos off-chain" { technology "JSON/HTTPS" }
+
+  // Flujo interno API Backend
+  votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT en cada request"
+  votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN; emite JWT de sesión con rol" { technology "HTTPS" }
+  votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
+  votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
+  votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
+  votar.api.apiRouter -> votar.api.votoModule "Enruta BUD (boleta + merkle-proof; VOTAR-379 sin confirmación off-chain)"
+  votar.api.votoModule -> votar.api.dataAccess "Lee boleta oficializada; si CERRADA/ESCRUTADA responde HTTP 410 Gone (VOTAR-321); no persiste vínculo identidad↔voto"
+  votar.api.apiRouter -> votar.api.revotePolicyService "Persiste/consulta política de voto múltiple"
+  votar.api.revotePolicyService -> votar.api.rulesEngine "Valida coherencia de RevoteConfig"
+  votar.api.revotePolicyService -> votar.api.dataAccess "Persiste config en electionSchema"
+  votar.api.revotePolicyService -> votar.api.lifecycleManager "Inyecta RevoteConfig en createElection() de la factory"
+  votar.api.revotePolicyService -> rpc "Consulta getVoterState(nullifier) para feedback al BUD" { technology "JSON-RPC/HTTPS" }
+  votar.api.apiRouter -> votar.api.lifecycleManager "Solicita apertura/cierre del comicio"
+  votar.api.apiRouter -> votar.api.voterCsvProcessor "Procesa padrón cargado por la autoridad"
+  votar.api.apiRouter -> votar.api.identityDecoupler "Solicita credencial anónima desvinculada"
+  votar.api.apiRouter -> votar.api.merkleBuilder "Obtiene Merkle Proof del votante autenticado"
+  votar.api.apiRouter -> votar.api.reportGenerator "Genera reportes oficiales bajo demanda"
+  votar.api.apiRouter -> votar.api.dataAccess "Lee/escribe entidades operativas"
+
+  votar.api.voterCsvProcessor -> votar.api.merkleBuilder "Entrega hojas hasheadas para construcción del árbol"
+  votar.api.merkleBuilder -> votar.api.dataAccess "Persiste raíz y hojas del padrón"
+  votar.api.identityDecoupler -> votar.api.merkleBuilder "Solicita hoja Merkle del votante validado"
+  votar.api.rulesEngine -> votar.api.dataAccess "Consulta configuración y candidatos"
+  votar.api.lifecycleManager -> votar.api.dataAccess "Actualiza estado del comicio (ABIERTA/CERRADA) y congela snapshot del dashboard"
+  votar.api.lifecycleManager -> votar.api.auditLogger "Registra apertura/cierre (COMICIO_ABIERTO / COMICIO_CERRADO)"
+  votar.api.lifecycleManager -> rpc "setElectionWindow + setElectionState(OPEN|CLOSED) en MerkleRootStore" { technology "JSON-RPC/HTTPS" }
+  votar.api.reportGenerator -> votar.api.dataAccess "Lee datos relacionales"
+  votar.api.reportGenerator -> rpc "Consulta resultados/eventos on-chain" { technology "JSON-RPC/HTTPS" }
+  votar.api.apiRouter -> votar.api.auditLogger "Registra acciones críticas"
+
+  // API Backend -> Base de Datos
+  votar.api.dataAccess -> votar.db.electionSchema "Lee/escribe comicios y direcciones de contrato" { technology "TCP/IP" }
+  votar.api.dataAccess -> votar.db.candidateSchema "Lee/escribe categorías, listas y candidatos" { technology "TCP/IP" }
+  votar.api.dataAccess -> votar.db.voterSchema "Lee/escribe hashes de padrón" { technology "TCP/IP" }
+  votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora (VOTO_EMITIDO anónimo — VOTAR-379)" { technology "TCP/IP" }
+
+  // Panel Admin -> Blockchain (publicación de raíz)
+  votar.panel.rootPublisher -> votar.api.merklePublisherService "POST /padron/merkle/publicar" { technology "HTTPS / JSON" }
+  votar.api.merklePublisherService -> rpc "publishRoot firmada con MERKLE_UPDATER_ROLE" { technology "JSON-RPC/HTTPS" }
+  votar.api.merklePublisherService -> votar.api.dataAccess "Actualiza MERKLE_TREE (PUBLICADO_ON_CHAIN, tx_hash)" { technology "TypeORM" }
+
+  // Frontends -> Blockchain (Web3)
+  votar.bud.blockchainClient -> rpc "Envía castSignedVote (payload + proof + firma); transmitter paga gas" { technology "JSON-RPC/HTTPS" }
+  votar.dashboard.blockScanner -> rpc "Consulta logs, eventos y estado del contrato" { technology "JSON-RPC/HTTPS" }
+  votar.dashboard.localVerifier -> votar.dashboard.blockScanner "Valida prueba contra raíz on-chain"
+
+  // RPC -> Smart Contracts
+  rpc -> votar.contracts.electionFactory "Proxy para createElection() (DEFAULT_ADMIN_ROLE)"
+  rpc -> votar.contracts.ballotContract "Proxy para castSignedVote()/castVote() y lecturas de estado"
+  rpc -> votar.contracts.merkleRootStore "Proxy para publishRoot() (MERKLE_UPDATER_ROLE)"
+  rpc -> votar.contracts.tallyContract "Lecturas view del escrutinio para Dashboard"
+  rpc -> votar.contracts.auditViewContract "Lecturas view sin gas (VOTAR-350): estado, participación, tallies, recibos"
+
+  // Flujo interno On-Chain
+  votar.contracts.electionFactory -> votar.contracts.ballotContract "Despliega BallotContract por comicio"
+  votar.contracts.electionFactory -> votar.contracts.voteRegistry "Despliega VoteRegistry asociado"
+  votar.contracts.electionFactory -> votar.contracts.tallyContract "Despliega TallyContract asociado"
+  votar.contracts.electionFactory -> votar.contracts.auditViewContract "Despliega AuditView asociado"
+  votar.contracts.electionFactory -> votar.contracts.votarAccessControl "Hereda RBAC; asigna DEFAULT_ADMIN_ROLE al Multisig en deploy"
+  votar.contracts.ballotContract -> votar.contracts.votarAccessControl "Hereda VotarAccessControl (futuro)"
+  votar.contracts.accessControlHarness -> votar.contracts.votarAccessControl "Hereda base RBAC (UAT Sepolia US-349)"
+  votar.contracts.votarAccessControl -> votar.contracts.ozAccessControl "Extiende AccessControl OZ v5"
+  votar.contracts.votarAccessControl -> votar.contracts.ozPausable "Extiende Pausable; pause/unpause con PAUSER_ROLE"
+  votar.contracts.electionFactory -> votar.contracts.ozAccessControl "Configura roles iniciales en deployment"
+
+  votar.contracts.ballotContract -> votar.contracts.merkleRootStore "Consulta Merkle Root + ElectionState/endTime en castVote()/castSignedVote()"
+  votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "MerkleProof.verify(proof, root, leaf): valida padrón"
+  votar.contracts.ballotContract -> votar.contracts.ozECDSA "ECDSA.recover(payload, sig): verifica Firma Digital (Ley 25.506)"
+  votar.contracts.ballotContract -> votar.contracts.voteRegistry "recordVote(electionId, voterHash, candidateId) — VOTAR-346; LAST_WINS en tallies del registry"
+  votar.contracts.ballotContract -> votar.contracts.tallyContract "Futuro: delta de escrutinio dedicado (hoy tallies viven en VoteRegistry)"
+  votar.contracts.ballotContract -> votar.contracts.ozPausable "whenNotPaused modifier en castVote()/castSignedVote()"
+  votar.contracts.ballotContract -> votar.contracts.ozAccessControl "onlyRole(PAUSER_ROLE) en pause()/unpause()"
+  votar.contracts.ballotContract -> ethereum "Emite SignedVoteCast; VoteRegistry emite VoteCast indexado (electionId, voterHash)"
+
+  votar.contracts.voteRegistry -> votar.contracts.ozAccessControl "onlyRole(BALLOT_ROLE): solo BallotContract escribe"
+  votar.contracts.tallyContract -> votar.contracts.ozAccessControl "onlyRole(BALLOT_ROLE) para mutar contadores"
+  votar.contracts.merkleRootStore -> votar.contracts.ozAccessControl "onlyRole(MERKLE_UPDATER_ROLE)"
+  votar.contracts.auditViewContract -> votar.contracts.voteRegistry "getParticipationStats / getVotesByCandidate / verifyReceipt (VOTAR-350)"
+  votar.contracts.auditViewContract -> votar.contracts.merkleRootStore "getElectionState (view)"
+}
+
+views {
+  // ─────────────────────────
+  // Vistas Arquitectónicas
+  // ─────────────────────────
+
+  view context_view {
+    title "Diagrama de Contexto (Nivel 1) - Plataforma VOTAR"
+    description "Visión macroscópica de los actores involucrados y las dependencias externas del sistema."
+    
+    include votante, autoridad, auditor
+    include votar
+    include sso, rpc, ethereum
+
+    autoLayout TopBottom
+  }
+
+  view container_view of votar {
+    title "Diagrama de Contenedores (Nivel 2) - Plataforma VOTAR"
+    description "Despliegue interno de la Plataforma VOTAR mostrando la separación entre lógica off-chain y web3."
+    
+    include *
+    
+    style votar.contracts { color indigo }
+    style rpc, ethereum { color gray }
+    
+    autoLayout LeftRight
+  }
+
+  // ─────────────────────────
+  // Vistas de Componentes (Nivel 3)
+  // ─────────────────────────
+
+  view bud_components of votar.bud {
+    title "Diagrama de Componentes (Nivel 3) - Boleta Única Digital (BUD)"
+    description "Componentes internos del frontend de votación y firma criptográfica."
+    
+    include *
+    include votante
+    include votar.api
+    include rpc
+    
+    autoLayout TopBottom
+  }
+
+  view   api_components of votar.api {
+    title "Diagrama de Componentes (Nivel 3) - API Backend"
+    description "Lógica de control, validación, anonimato y construcción del árbol de Merkle."
+    
+    include *
+    include sso
+    include votar.bud
+    include votar.panel
+    include votar.db
+    
+    autoLayout LeftRight
+  }
+
+  view panel_components of votar.panel {
+    title "Diagrama de Componentes (Nivel 3) - Panel de Administración"
+    description "Interfaz de administración electoral incluyendo la publicación de Merkle Root on-chain."
+    
+    include *
+    include autoridad
+    include votar.api
+    include rpc
+    
+    autoLayout TopBottom
+  }
+
+  view  contracts_components of votar.contracts {
+    title "Diagrama de Componentes (Nivel 3) - Ecosistema On-Chain"
+    description "Contratos inteligentes propios (indigo) y librerías OpenZeppelin v5 (verde) del ecosistema electoral."
+    
+    include *
+    include rpc
+    include ethereum
+
+    style votar.contracts.ozMerkleProof { color green }
+    style votar.contracts.ozAccessControl { color green }
+    style votar.contracts.ozPausable { color green }
+    style votar.contracts.ozECDSA { color green }
+
+    autoLayout TopBottom
+  }
+
+  // Vista dinámica del flujo de sufragio
+  dynamic view sufragio_flow {
+    title "Flujo de Emisión de Sufragio con Desvinculación de Identidad (Componentes)"
+    description "Incluye paso 0: publicación de Merkle Root on-chain por la autoridad antes de apertura del comicio."
+
+    // Fase previa: publicación de padrón on-chain
+    autoridad -> votar.panel.rootPublisher "0a. Solicita publicación de Merkle Root calculada"
+    votar.panel.rootPublisher -> votar.api.merklePublisherService "0b. POST /padron/merkle/publicar"
+    votar.api.merklePublisherService -> rpc "0c. publishRoot con MERKLE_UPDATER_ROLE"
+    rpc -> votar.contracts.merkleRootStore "0d. Almacena root: electionId => bytes32 + RootPublished"
+
+    // Fase de votación
+    votante -> votar.bud.auth "1. Inicia sesión contra SSO"
+    votar.bud.auth -> votar.api.apiRouter "2. Solicita token y validación"
+    votar.api.jwtValidator -> sso "3. Valida credenciales de identidad"
+    sso -> votar.api.jwtValidator "4. Retorna claims de identidad legal"
+    votar.api.identityDecoupler -> votar.api.merkleBuilder "5. Genera credencial anónima y calcula Merkle Proof off-chain"
+    votar.api.apiRouter -> votar.bud.proofRequester "6. Entrega Merkle Proof del votante"
+    votar.bud.cryptoEngine -> votar.bud.blockchainClient "7. Firma sufragio EIP-712 y calcula nulificador localmente"
+    votar.bud.blockchainClient -> rpc "8. Envía castSignedVote(payload, sig, proof) a la red (transmitter paga gas)"
+    rpc -> votar.contracts.ballotContract "9. Transmite transacción castSignedVote() a la EVM"
+    votar.contracts.ballotContract -> votar.contracts.merkleRootStore "10. Consulta Merkle Root activa del comicio"
+    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "11. MerkleProof.verify(proof, root, leaf): valida padrón; revierte InvalidMerkleProof si falla (US-339)"
+    votar.contracts.ballotContract -> votar.contracts.ozECDSA "12. ECDSA.recover: verifica firma EIP-712 del votante (VOTAR-357)"
+    votar.contracts.ballotContract -> votar.contracts.voteRegistry "13. Registra/sobrescribe voto por nullifier (último voto cuenta)"
+    votar.contracts.ballotContract -> votar.contracts.tallyContract "14. Actualiza contadores por delta"
+    votar.contracts.ballotContract -> ethereum "15. Emite SignedVoteCast(electionId, voterLeaf, nullifier, selectionHash, signer)"
+  }
+}

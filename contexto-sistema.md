@@ -117,10 +117,10 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Contrato | Rol |
 |---|---|
 | `ElectionFactory.sol` | Despliega conjunto de contratos por comicio. Patrón UUPS Proxy Factory |
-| `BallotContract.sol` | Orquesta `castVote()`: valida Merkle Proof contra `MerkleRootStore` (US-339, error `InvalidMerkleProof`). Futuro: firma ECDSA, política re-voto, VoteRegistry, TallyContract. Patrón CEI + ReentrancyGuard + `whenNotPaused` |
-| `VoteRegistry.sol` | Estado canónico de sufragios por nullifier. Soporta sobrescritura (LAST_WINS) |
-| `TallyContract.sol` | Contadores incrementales por candidato. Resultados en tiempo real |
-| `AuditViewContract.sol` | Funciones `view/pure` para auditores externos (no muta estado) |
+| `BallotContract.sol` | Orquesta `castVote` / `castSignedVote`: Merkle + EIP-712; delega `recordVote` a `VoteRegistry` (VOTAR-346). Rechaza `ElectionClosed` (VOTAR-321). Patrón CEI + `whenNotPaused` |
+| `VoteRegistry.sol` | Estado canónico por `voterHash` (nullifier). `VoteCast` indexado; tallies LAST_WINS; views VOTAR-350 (`getParticipationStats`, `verifyReceipt`) |
+| `TallyContract.sol` | Contadores incrementales por candidato (aspiracional; tallies actuales viven en VoteRegistry) |
+| `AuditViewContract.sol` | Fachada `view` sin gas (VOTAR-350): estado, participación, votos por candidato, verificación de recibo anónimo |
 | `MerkleRootStore.sol` | Almacena y versiona Merkle Roots publicadas por la autoridad |
 | OZ: `MerkleProof.sol` | Verifica pertenencia al árbol (OpenZeppelin v5) |
 | OZ: `ECDSA.sol` | Recupera firmante del payload del voto (Ley 25.506) |

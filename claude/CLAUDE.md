@@ -107,7 +107,8 @@ codigo/
 └── diagramas/     # Diagramas de referencia por sprint
     ├── sprint-0/  # DER, clases y votar.c4 del Sprint 0
     ├── sprint-1/  # DER, clases y votar.c4 del Sprint 1
-    └── sprint-2/  # DER, clases y votar.c4 del Sprint 2 (VOTAR-334 Merkle)
+    ├── sprint-2/  # DER, clases y votar.c4 del Sprint 2 (VOTAR-334 Merkle)
+    └── sprint-3/  # DER, clases, C4 y secuencias del Sprint 3 (VOTAR-346/350 auditoría on-chain)
 ```
 
 ---
