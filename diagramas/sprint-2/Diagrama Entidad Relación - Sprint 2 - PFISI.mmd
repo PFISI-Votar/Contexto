@@ -248,31 +248,31 @@ erDiagram
         int id_candidato FK "Candidato seleccionado (null si voto en blanco)"
     }
 
-    %% VOTAR-379: eliminada VOTO_CONFIRMACION (vinculaba votante_hash ↔ payload_hash).
-    %% La evidencia del sufragio queda on-chain (castSignedVote). Riesgo residual:
-    %% voterLeaf viaja en calldata/evento on-chain (Merkle sin ZK — fuera de alcance).
-
     %% ═══════════════════════════════════════════════════════════════════════
-    %% TRANSACCIONES BLOCKCHAIN (Registro off-chain de txs on-chain)
+    %% RECIBO DE PARTICIPACIÓN (VOTAR-360) — artefacto client-side + on-chain
+    %% VOTAR-379 eliminó VOTO_CONFIRMACION (puente votante_hash ↔ payload).
+    %% El recibo PDF se genera SOLO en el navegador (no se almacena en servidor).
+    %% Clave de verificación pública = TransactionHash (evento SignedVoteCast).
+    %% FirmaDigital = firma ECDSA del sistema sobre payload canónico
+    %% (ElectionID|txHash|blockNumber|timestamp), sin persistir el PDF.
+    %% Entidades aspiracionales (no TypeORM en Sprint 2):
     %% ═══════════════════════════════════════════════════════════════════════
 
     TRANSACCION_BLOCKCHAIN {
-        int id_transaccion PK "Identificador interno de la transacción"
-        int id_voto FK, UK "Voto asociado a esta transacción"
-        string hash_transaccion UK "Hash de la transacción en la blockchain"
-        int numero_bloque "Número del bloque en la cadena"
+        string hash_transaccion UK "TransactionHash on-chain (clave de verificación E2E)"
+        int id_eleccion "Elección del evento SignedVoteCast"
+        int numero_bloque "Bloque de inclusión"
         datetime timestamp "Timestamp del bloque"
-        string estado "PENDIENTE | CONFIRMADA | FALLIDA"
-        int gas_usado "Gas consumido por la transacción"
-        string direccion_contrato "Address del contrato destino"
+        string estado "CONFIRMADA (status=1 + SignedVoteCast)"
+        string direccion_contrato "BallotContract"
     }
 
     RECIBO_VOTACION {
-        int id_recibo PK "Identificador interno del recibo"
-        int id_transaccion FK, UK "Transacción asociada"
-        string hash_voto "Hash del voto emitido"
-        datetime fecha_emision "Fecha de emisión del recibo"
-        string codigo_verificacion UK "Código para verificación E2E"
+        string hash_transaccion UK "Mismo TransactionHash del QR / portal /verificar"
+        int id_eleccion "ElectionID impreso en el PDF"
+        datetime timestamp "Timestamp impreso en el PDF"
+        string firma_digital "FirmaDigital del sistema de auditoría"
+        string origen "CLIENT_SIDE_PDF — nunca persistido en BD"
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
@@ -399,9 +399,10 @@ erDiagram
     VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
 
-    %% --- Cadena criptográfica del voto ---
-    VOTO ||--|| TRANSACCION_BLOCKCHAIN : "produce"
-    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "emite"
+    %% --- Recibo / verificación (VOTAR-360, sin tabla off-chain de identidad) ---
+    %% Evidencia on-chain: SignedVoteCast → TRANSACCION_BLOCKCHAIN (derivada)
+    %% Recibo PDF: RECIBO_VOTACION client-side ligado solo por hash_transaccion
+    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "materializa PDF local"
 
     %% --- Billetera efímera (sin FK permanente a Votante) ---
     BILLETERA_EFIMERA ||--o{ VOTO : "firma"
