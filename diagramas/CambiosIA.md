@@ -4,6 +4,25 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-07-13] — votar.c4 (Sprint 2) — VOTAR-314 Protección de identidad
+
+- **Tipo de cambio**: Actualización de componente `jwtValidator` (HS256 → RS256/JWKS)
+- **Motivo**:
+  - Cerrar el “objetivo futuro JWKS” documentado en US-313
+  - Reflejar validación de firma vía JWKS, claims `iss`/`aud`/`exp`, rechazo 401 + `auditLogger`
+  - Documentar modos mutuamente excluyentes BFF interino vs SSO (`JWT_JWKS_URI`)
+
+- **Cambios específicos**:
+  1. Tecnología del componente: NestJS Passport JWT + JWKS (RS256)
+  2. Descripción: Modo A (BFF firma + `/auth/.well-known/jwks.json`) vs Modo B (JWKS IdP)
+  3. Relación `apiRouter → jwtValidator` y `jwtValidator → sso` actualizadas
+
+- **User Stories relacionadas**: VOTAR-314 (protección de identidad), VOTAR-313 (login interino Autogestión)
+
+- **Archivo modificado**: `Contexto/diagramas/sprint-2/votar.c4`
+
+---
+
 ## [2026-07-13] — Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
 
 - **Tipo de cambio**: Corrección de modelo de recibo (alineado a VOTAR-379 + VOTAR-360)
