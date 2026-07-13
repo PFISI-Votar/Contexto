@@ -248,32 +248,35 @@ erDiagram
         int id_candidato FK "Candidato seleccionado (null si voto en blanco)"
     }
 
-    %% VOTAR-379: eliminada VOTO_CONFIRMACION (vinculaba votante_hash ↔ payload_hash).
-    %% La evidencia del sufragio queda on-chain (castSignedVote). Riesgo residual:
-    %% voterLeaf viaja en calldata/evento on-chain (Merkle sin ZK — fuera de alcance).
-
     %% ═══════════════════════════════════════════════════════════════════════
-    %% TRANSACCIONES BLOCKCHAIN (Registro off-chain de txs on-chain)
+    %% VOTO_CONFIRMACION (VOTAR-360: Recibo blockchain con UUID E2E)
+    %% Reintroducida para almacenar metadatos de confirmación post-blockchain.
+    %% NO vincula votante_hash ↔ payload_hash de forma única (permite re-voto).
+    %% Constraint único: (id_eleccion, idempotency_key) basado en nullifier.
     %% ═══════════════════════════════════════════════════════════════════════
 
-    TRANSACCION_BLOCKCHAIN {
-        int id_transaccion PK "Identificador interno de la transacción"
-        int id_voto FK, UK "Voto asociado a esta transacción"
-        string hash_transaccion UK "Hash de la transacción en la blockchain"
-        int numero_bloque "Número del bloque en la cadena"
-        datetime timestamp "Timestamp del bloque"
-        string estado "PENDIENTE | CONFIRMADA | FALLIDA"
-        int gas_usado "Gas consumido por la transacción"
-        string direccion_contrato "Address del contrato destino"
+    VOTO_CONFIRMACION {
+        uuid id_voto_confirmacion PK "Identificador único de la confirmación"
+        int id_eleccion FK "Elección asociada"
+        string votante_hash "Hash anónimo del votante (no único por elección)"
+        uuid idempotency_key UK "Clave de idempotencia (derivada del nullifier)"
+        string payload_hash "Hash del payload del voto"
+        string comprobante_hash "Hash del comprobante (payload + txHash)"
+        string estado "RECIBIDO"
+        datetime recibido_en "Timestamp de recepción en backend"
+        string tx_hash "Hash de la transacción blockchain (0x...)"
+        int block_number "Número de bloque donde se confirmó"
+        datetime tx_timestamp "Timestamp de la transacción blockchain"
+        string tx_status "PENDIENTE | CONFIRMADA | FALLIDA"
+        uuid codigo_verificacion_e2e UK "UUID para verificación E2E (generado auto)"
+        string contract_address "Dirección del smart contract"
     }
 
-    RECIBO_VOTACION {
-        int id_recibo PK "Identificador interno del recibo"
-        int id_transaccion FK, UK "Transacción asociada"
-        string hash_voto "Hash del voto emitido"
-        datetime fecha_emision "Fecha de emisión del recibo"
-        string codigo_verificacion UK "Código para verificación E2E"
-    }
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% NOTA: TRANSACCION_BLOCKCHAIN y RECIBO_VOTACION fueron unificadas en
+    %% VOTO_CONFIRMACION (VOTAR-360). La nueva entidad integra metadatos de
+    %% blockchain + código de verificación E2E en una sola tabla.
+    %% ═══════════════════════════════════════════════════════════════════════
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% BILLETERA EFÍMERA (sin FK permanente al Votante)
@@ -399,9 +402,10 @@ erDiagram
     VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
 
-    %% --- Cadena criptográfica del voto ---
-    VOTO ||--|| TRANSACCION_BLOCKCHAIN : "produce"
-    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "emite"
+    %% --- Confirmación de voto blockchain (VOTAR-360) ---
+    %% Permite re-voto: 1:N (múltiples confirmaciones por elección)
+    %% Anti-replay garantizado por (id_eleccion, idempotency_key) basado en nullifier
+    ELECCION ||--o{ VOTO_CONFIRMACION : "registra confirmaciones"
 
     %% --- Billetera efímera (sin FK permanente a Votante) ---
     BILLETERA_EFIMERA ||--o{ VOTO : "firma"
