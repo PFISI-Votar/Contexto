@@ -222,9 +222,16 @@ diagramas/
 │   ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
 │   ├── Diagrama de clases - Sprint 1 - PFISI.mmd
 │   └── votar.c4
-└── sprint-2/             # diagramas del Sprint 2
-    ├── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
-    ├── Diagrama de clases - Sprint 2 - PFISI.mmd
+├── sprint-2/             # diagramas del Sprint 2
+│   ├── Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
+│   ├── Diagrama de clases - Sprint 2 - PFISI.mmd
+│   ├── secuencia-cierre-comicio-votar-321.mmd
+│   └── votar.c4
+└── sprint-3/             # diagramas del Sprint 3
+    ├── Diagrama Entidad Relación - Sprint 3 - PFISI.mmd
+    ├── Diagrama de clases - Sprint 3 - PFISI.mmd
+    ├── secuencia-cierre-comicio-votar-321.mmd
+    ├── secuencia-consulta-auditoria-votar-350.mmd
     └── votar.c4
 ```
 
