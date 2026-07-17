@@ -4,6 +4,26 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-07-17] — Sprint 3 — VOTAR-341 unicidad sin re-voto
+
+- **Tipo de cambio**: Alineación on-chain de política de revoto (`RevoteDisabled`)
+- **Motivo**:
+  - Documentar `revoteEnabled` en `RegistroVoto` / `VoteRegistry`
+  - Reflejar `enforceRevotePolicy` → `RevoteDisabled` en `ContratoBoleta` / `BallotContract`
+  - Asentar deuda conocida: bandera inmutable por deploy (1 registry/comicio)
+
+- **Cambios específicos**:
+  1. Diagrama de clases: `RegistroVoto.revoteEnabled`, `ContratoBoleta.enforceRevotePolicy`
+  2. Relación `ContratoBoleta ..> RegistroVoto` anotada con consulta `revoteEnabled`
+  3. C4: `BallotContract` y `VoteRegistry` describen `RevoteDisabled` / política VOTAR-341
+  4. Notas de clase actualizadas (VOTAR-341)
+
+- **User Stories relacionadas**: VOTAR-341 (unicidad sin re-voto)
+
+- **Archivos**: `Contexto/diagramas/sprint-3/Diagrama de clases - Sprint 3 - PFISI.mmd`, `Contexto/diagramas/sprint-3/votar.c4`
+
+---
+
 ## [2026-07-13] — Sprint 3 (nueva carpeta) + VOTAR-350 / VOTAR-346
 
 - **Tipo de cambio**: Versionado de sprint + alineación on-chain de auditoría pública
