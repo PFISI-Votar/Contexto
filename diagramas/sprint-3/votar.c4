@@ -298,7 +298,7 @@ model {
       ballotContract = component "BallotContract.sol" {
         #web3
         technology "Solidity / VotarAccessControl + MerkleProof + EIP-712 (OZ v5)"
-        description "US-339: castVote(electionId, voterLeaf, merkleProof, candidateId). VOTAR-357/358: castSignedVote(..., nullifier, selectionHash, timestamp, expectedSigner, signature, candidateId) valida Merkle + EIP-712 y rechaza NullifierAlreadyUsed. VOTAR-321: ElectionClosed si CLOSED/TALLIED o block.timestamp >= endTime. VOTAR-346: delega recordVote a VoteRegistry (voterHash=nullifier en firmado). Emite SignedVoteCast (recibo). Leaf = standardLeafHash(bytes32). whenNotPaused"
+        description "US-339: castVote(electionId, voterLeaf, merkleProof, candidateId). VOTAR-357/358: castSignedVote(..., nullifier, selectionHash, timestamp, expectedSigner, signature, candidateId) valida Merkle + EIP-712. VOTAR-341: enforceRevotePolicy → RevoteDisabled si !VoteRegistry.revoteEnabled y nullifier ya votó. VOTAR-321: ElectionClosed si CLOSED/TALLIED o block.timestamp >= endTime. VOTAR-346: delega recordVote a VoteRegistry (voterHash=nullifier en firmado). Emite SignedVoteCast (recibo). Leaf = standardLeafHash(bytes32). whenNotPaused"
       }
 
       // ── Registro de Votos (estado canónico de sufragios) ────────────
@@ -308,7 +308,7 @@ model {
       voteRegistry = component "VoteRegistry.sol" {
         #web3 #security
         technology "Solidity / VotarAccessControl (VOTAR-346/350)"
-        description "Registro canónico keyed por voterHash anónimo (nullifier). recordVote solo BALLOT_ROLE + whenNotPaused. Emite VoteCast(electionId indexed, voterHash indexed, candidateId, isOverwrite) sin wallet. Tallies O(1) incl. VOTO_BLANCO/VOTO_NULO. VOTAR-350 views: getParticipationStats, getVotesByCandidate, verifyReceipt(receiptHash=voterHash). Pause no bloquea lecturas"
+        description "Registro canónico keyed por voterHash anónimo (nullifier). recordVote solo BALLOT_ROLE + whenNotPaused. Emite VoteCast(electionId indexed, voterHash indexed, candidateId, isOverwrite) sin wallet. Tallies O(1) incl. VOTO_BLANCO/VOTO_NULO. VOTAR-341: revoteEnabled inmutable (default false) → RevoteDisabled en segundo voto; overwrite solo si true (VOTAR-344). VOTAR-350 views: getParticipationStats, getVotesByCandidate, verifyReceipt(receiptHash=voterHash). Pause no bloquea lecturas. Nota: bandera global por deploy (1 registry/comicio); deuda si se comparte entre elecciones"
       }
 
       // ── Contador / Escrutinio ───────────────────────────────────────

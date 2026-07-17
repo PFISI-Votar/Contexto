@@ -297,12 +297,14 @@ classDiagram
         +castSignedVote(... nullifier Hash, selectionHash Hash, firma bytes, candidatoId int) void
         +haVotado(eleccionId int, hojaVotante Hash) boolean
         -verificarMerkleProof(eleccionId int, hojaVotante Hash, proof MerkleProof) void
+        -enforceRevotePolicy(eleccionId int, nullifier Hash) void
     }
 
     class RegistroVoto {
         <<contrato inteligente>>
         +VOTO_BLANCO int
         +VOTO_NULO int
+        +revoteEnabled boolean
         +recordVote(eleccionId int, voterHash Hash, candidatoId int) void
         +getTally(eleccionId int, candidatoId int) int
         +getParticipationStats(eleccionId int) StatsParticipacion
@@ -355,7 +357,7 @@ classDiagram
     MerkleTree ..> AlmacenRaizMerkle : ancla raíz
     ContratoBoleta ..> AlmacenRaizMerkle : consulta raíz vigente
     ContratoBoleta ..> MerkleProof : verifica on-chain
-    ContratoBoleta ..> RegistroVoto : recordVote (VOTAR-346)
+    ContratoBoleta ..> RegistroVoto : recordVote + consulta revoteEnabled (VOTAR-341/346)
     VistaAuditoria ..> RegistroVoto : stats / tallies / recibos (VOTAR-350)
     VistaAuditoria ..> AlmacenRaizMerkle : getElectionState
     PadronElectoral ..> PublicacionMerkle : registra publicación
@@ -380,8 +382,8 @@ classDiagram
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
-    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry\n(voterHash=nullifier; sin indexar wallet)."
-    note for RegistroVoto "VOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nPause bloquea escritura, no lectura."
+    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry\n(voterHash=nullifier; sin indexar wallet).\nVOTAR-341: enforceRevotePolicy → RevoteDisabled\nsi !revoteEnabled y nullifier ya votó."
+    note for RegistroVoto "VOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
     note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nverifyReceipt usa ancla anónima (nullifier),\nno TransactionHash off-chain (eso es VOTAR-360)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
     note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."
