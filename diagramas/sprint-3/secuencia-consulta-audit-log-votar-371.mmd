@@ -1,0 +1,35 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e8f1f8', 'primaryTextColor': '#202124', 'primaryBorderColor': '#2f6f9f', 'lineColor': '#5f6368', 'fontFamily': 'Inter, sans-serif'}}}%%
+%% DIAGRAMA DE SECUENCIA — Consulta de Audit Log institucional (VOTAR-371)
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09 — Sprint 3
+sequenceDiagram
+  autonumber
+  actor Admin as Autoridad Electoral
+  participant Panel as Panel Admin (React)
+  participant API as AuditLogController
+  participant Guard as JwtAuthGuard + RolesGuard
+  participant Svc as AuditLogQueryService
+  participant Logger as AuditLoggerService
+  participant DB as PostgreSQL audit_log
+
+  Admin->>Panel: Aplica filtros (tipo, actor hash, rango fechas, comicio)
+  Panel->>API: GET /audit-log?page&limit&tipoEvento&actor&desde&hasta
+  API->>Guard: Validar JWT + rol ELECTION_ADMIN
+  alt Sin permisos
+    Guard-->>API: 401 / 403
+    API-->>Panel: Error
+  else Autorizado
+    Guard-->>API: OK
+    API->>Svc: consultarAuditLog(queryDto)
+    opt actor/terminal crudo
+      Svc->>Logger: ofuscarOperador / identificadorTerminal
+      Logger-->>Svc: hash SHA-256
+    end
+    Svc->>DB: QueryBuilder filtros + ORDER BY timestamp DESC + paginación
+    DB-->>Svc: rows + total
+    Svc-->>API: AuditLogListResponseDto (sin PII)
+    API-->>Panel: JSON paginado
+    Panel-->>Admin: Tabla + detalle Sheet (hashes truncados)
+  end
+
+  Note over Admin,DB: VOTO_EMITIDO: actor=ANONIMO, terminal=null — Ley 25.326
