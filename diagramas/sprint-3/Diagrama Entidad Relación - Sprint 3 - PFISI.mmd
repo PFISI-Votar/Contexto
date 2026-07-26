@@ -322,7 +322,7 @@ erDiagram
         string hash_anterior "Firma del bloque previo (encadenamiento VOTAR-370); génesis = 64 ceros"
         string ip_origen "Identificador de terminal criptográfico (hash de IP); null en VOTO_EMITIDO"
         string endpoint "Ruta o origen del evento"
-        string datos_adicionales "JSON enriquecido; sin campos joinables a SSO en eventos de voto"
+        string datos_adicionales "JSON enriquecido; sin campos joinables a SSO en eventos de voto; append-only triggers PG VOTAR-372"
     }
 
     ACTIVIDAD_ELECTORAL {
