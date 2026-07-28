@@ -1,80 +1,86 @@
-# Registro de cambios asistidos por IA — Diagramas
+# Registro de Cambios en Diagramas
 
-Bitácora de modificaciones a los diagramas de `diagramas/`. Cada entrada documenta tipo, motivo y archivo nuevo versionado, según la norma definida en `CLAUDE.md`.
-
-Estructura actual:
-
-```
-diagramas/
-├── CambiosIA.md
-├── sprint-0/
-│   ├── Diagrama Entidad Relación - Sprint 0 - PFISI.mmd
-│   ├── Diagrama de clases - Sprint 0 - PFISI(1).mmd
-│   └── votar.c4
-└── sprint-1/
-    ├── Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
-    ├── Diagrama de clases - Sprint 1 - PFISI.mmd
-    └── votar.c4
-```
+Este archivo documenta todas las modificaciones realizadas a los diagramas de arquitectura del sistema VOTAR, siguiendo la norma establecida en `CLAUDE.md`.
 
 ---
 
-## 2026-06-20 — sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd (corrección)
+## [2026-07-17] — Sprint 3 — VOTAR-341 unicidad sin re-voto
 
-- **Tipo de cambio**: refactor del diagrama de clases a modelo de análisis de dominio.
-- **Motivo**: eliminar artefactos de implementación (DTOs, repositories, servicios NestJS) y conservar entidades de negocio, value objects, enumeraciones y operaciones del dominio electoral (US-316 + US-318).
-- **Archivo modificado**: `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+- **Tipo de cambio**: Alineación on-chain de política de revoto (`RevoteDisabled`)
+- **Motivo**:
+  - Documentar `revoteEnabled` en `RegistroVoto` / `VoteRegistry`
+  - Reflejar `enforceRevotePolicy` → `RevoteDisabled` en `ContratoBoleta` / `BallotContract`
+  - Asentar deuda conocida: bandera inmutable por deploy (1 registry/comicio)
 
----
+- **Cambios específicos**:
+  1. Diagrama de clases: `RegistroVoto.revoteEnabled`, `ContratoBoleta.enforceRevotePolicy`
+  2. Relación `ContratoBoleta ..> RegistroVoto` anotada con consulta `revoteEnabled`
+  3. C4: `BallotContract` y `VoteRegistry` describen `RevoteDisabled` / política VOTAR-341
+  4. Notas de clase actualizadas (VOTAR-341)
 
-## 2026-06-20 — sprint-1 (US-316 — Crear comicio)
+- **User Stories relacionadas**: VOTAR-341 (unicidad sin re-voto)
 
-- **Tipo de cambio**: extensión de modelo relacional, diagrama de clases y C4 para alta de comicio en BORRADOR.
-- **Motivo**: US-316 — Implementación de creación de comicio con `tipo_votacion`, roles/categorías dinámicas (`cantidad_cargos` = máximo postulantes), `configuracion_comicio.metodos_autenticacion[]` (Google, SSO Institucional), validación temporal HTTP 422, sanitización de entrada y aislamiento on-chain en estado BORRADOR.
-- **Archivos modificados**:
-  - `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
-  - `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
-  - `sprint-1/votar.c4`
-
----
-
-## 2026-06-19 — Reorganización por carpetas de sprint (incl. votar.c4)
-
-- **Tipo de cambio**: reestructuración de directorios; `votar.c4` versionado por sprint.
-- **Motivo**: agrupar todos los artefactos por sprint (`sprint-0/`, `sprint-1/`). Solo `CambiosIA.md` permanece en la raíz de `diagramas/`.
-- **Archivos**:
-  - `sprint-0/votar.c4` — versión base (Sprint 0)
-  - `sprint-1/votar.c4` — extensión US-318 (Sprint 1)
-  - `.mmd` movidos a `sprint-0/` y `sprint-1/` (ver entrada anterior)
+- **Archivos**: `Contexto/diagramas/sprint-3/Diagrama de clases - Sprint 3 - PFISI.mmd`, `Contexto/diagramas/sprint-3/votar.c4`
 
 ---
 
-## 2026-06-19 — sprint-1/votar.c4
+## [2026-07-13] — Sprint 3 (nueva carpeta) + VOTAR-350 / VOTAR-346
 
-- **Tipo de cambio**: extensión de componentes C4 (Panel y API) para US-318.
-- **Motivo**: US-318 — Gestionar listas y candidatos. Se agregan `ofertaElectoralPanel`, `configDatosCandidatoPanel`, `eleccionModule` (subdominios `lista/` y `candidato/`), relaciones con `rulesEngine` y `dataAccess`, y ampliación de `candidateSchema` con tablas normalizadas de configuración de campos.
-- **Archivo nuevo**: `sprint-1/votar.c4` (evolución de `sprint-0/votar.c4`)
+- **Tipo de cambio**: Versionado de sprint + alineación on-chain de auditoría pública
+- **Motivo**:
+  - Abrir `diagramas/sprint-3/` conforme a la norma (no editar in-place Sprint 2)
+  - Documentar `AuditViewContract` y views de `VoteRegistry` implementadas en VOTAR-350
+  - Alinear C4/`VoteRegistry` con el evento `VoteCast` de VOTAR-346
 
----
+- **Cambios específicos**:
+  1. Creada carpeta `diagramas/sprint-3/` (DER, clases, C4, secuencia de cierre heredada)
+  2. C4: `AuditViewContract` con `getElectionState`, `getParticipationStats`, `getVotesByCandidate`, `verifyReceipt`
+  3. C4: `VoteRegistry` con tallies + views; `BallotContract` delega `recordVote`
+  4. Diagrama de clases: `RegistroVoto`, `VistaAuditoria`, `StatsParticipacion`
+  5. Nueva secuencia `secuencia-consulta-auditoria-votar-350.mmd` (UAT-01..04)
+  6. DER Sprint 3: sin cambio de esquema relacional (auditoría es on-chain)
 
-## 2026-06-19 — sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd
+- **User Stories relacionadas**: VOTAR-350 (views de auditoría), VOTAR-346 (VoteCast)
 
-- **Tipo de cambio**: extensión de oferta electoral y normalización relacional de campos dinámicos de candidato (Sprint 1).
-- **Motivo**: US-318 — Migración `NormalizeCampoDatosCandidato`: `LISTA.list_id` post-oficialización; `CANDIDATO.datos_adicionales` (JSONB validado); definición de campos en `CONFIGURACION_DATOS_CANDIDATO` (1:1 con elección) y `CAMPO_DATOS_CANDIDATO` (clave, tipo, obligatoriedad, validaciones, orden).
-- **Archivo modificado**: `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
-
----
-
-## 2026-06-19 — sprint-0/Diagrama de clases - Sprint 0 - PFISI(1).mmd
-
-- **Tipo de cambio**: nuevo diagrama de clases de dominio electoral y servicios NestJS (Sprint 1).
-- **Motivo**: US-318 — Documentar Boleta como contenedor de listas/categorías, entidades `ConfiguracionDatosCandidato` / `CampoDatosCandidato`, `Lista.listId`, `Candidato.datosAdicionales` y servicios `ListaService`, `CandidatoService`, `OficializacionService`, `ConfiguracionDatosCandidatoService`.
-- **Archivo nuevo**: `sprint-1/Diagrama de clases - Sprint 1 - PFISI.mmd`
+- **Archivos**: `Contexto/diagramas/sprint-3/*`
 
 ---
 
-## 2026-06-11 — sprint-0/Diagrama Entidad Relación - Sprint 0 - PFISI.mmd
+## [2026-07-13] — votar.c4 (Sprint 2) — VOTAR-314 Protección de identidad
 
-- **Tipo de cambio**: refinamiento semántico y estructural de `PADRON_VOTANTE`.
-- **Motivo**: implementación de la User Story 330 ("Importar padrón por CSV"). La entidad pasa a almacenar exclusivamente el hash Keccak-256 del votante (`hash_hoja` = `votanteHash`) en cumplimiento de la Ley 25.326 (anonimización estructural). Se elimina la FK a `VOTANTE` para evitar cualquier vínculo persistente con identidad civil. Se agrega `generado_en` (auditoría), `UNIQUE(id_padron, hash_hoja)` (anti-duplicados) e índice sobre `hash_hoja` (lookup eficiente durante validación de sufragio).
-- **Archivo nuevo**: `sprint-1/Diagrama Entidad Relación - Sprint 1 - PFISI.mmd`
+- **Tipo de cambio**: Actualización de componente `jwtValidator` (HS256 → RS256/JWKS)
+- **Motivo**:
+  - Cerrar el “objetivo futuro JWKS” documentado en US-313
+  - Reflejar validación de firma vía JWKS, claims `iss`/`aud`/`exp`, rechazo 401 + `auditLogger`
+  - Documentar modos mutuamente excluyentes BFF interino vs SSO (`JWT_JWKS_URI`)
+
+- **Cambios específicos**:
+  1. Tecnología del componente: NestJS Passport JWT + JWKS (RS256)
+  2. Descripción: Modo A (BFF firma + `/auth/.well-known/jwks.json`) vs Modo B (JWKS IdP)
+  3. Relación `apiRouter → jwtValidator` y `jwtValidator → sso` actualizadas
+
+- **User Stories relacionadas**: VOTAR-314 (protección de identidad), VOTAR-313 (login interino Autogestión)
+
+- **Archivo modificado**: `Contexto/diagramas/sprint-2/votar.c4`
+
+---
+
+## [2026-07-13] — Diagrama Entidad Relación - Sprint 2 - PFISI.mmd
+
+- **Tipo de cambio**: Corrección de modelo de recibo (alineado a VOTAR-379 + VOTAR-360)
+- **Motivo**:
+  - No reintroducir `VOTO_CONFIRMACION` (eliminada en VOTAR-379: desvinculación identidad↔voto)
+  - Documentar verificación pública por `TransactionHash` on-chain (`SignedVoteCast`)
+  - Documentar recibo PDF como artefacto **client-side** con `FirmaDigital` del sistema, sin persistencia en BD
+
+- **Cambios específicos**:
+  1. Eliminada entidad `VOTO_CONFIRMACION` del DER Sprint 2
+  2. Modeladas entidades aspiracionales `TRANSACCION_BLOCKCHAIN` y `RECIBO_VOTACION` (no TypeORM): clave = `hash_transaccion`
+  3. Relación `TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION` (PDF local materializa la evidencia on-chain)
+  4. Anotado: portal `GET /recibos/verificar/:txHash` + `POST /recibos/firmar` sin almacenar PDF
+
+- **User Stories relacionadas**: VOTAR-360 (recibo criptográfico), VOTAR-379 (voto anónimo)
+
+- **Archivo modificado**: `Contexto/diagramas/sprint-2/Diagrama Entidad Relación - Sprint 2 - PFISI.mmd`
+
+---

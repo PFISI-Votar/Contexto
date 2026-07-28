@@ -103,7 +103,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 
 | Componente | Rol |
 |---|---|
-| `jwtValidator` | Valida tokens SSO (OAuth2/OIDC) contra JWKS |
+| `jwtValidator` | Valida JWT vía JWKS (RS256) + claims iss/aud/exp; 401 → auditLogger (VOTAR-314). Login interino Autogestión (US-313) en Modo A |
 | `identityDecoupler` | Separa criptográficamente identidad→voto (Ley 25.326) |
 | `merkleBuilder` | Construye Merkle Tree (keccak256), genera proofs bajo demanda |
 | `voterCsvProcessor` | Parsea CSV, deduplica, hashea votantes |
@@ -117,14 +117,14 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Contrato | Rol |
 |---|---|
 | `ElectionFactory.sol` | Despliega conjunto de contratos por comicio. Patrón UUPS Proxy Factory |
-| `BallotContract.sol` | Orquesta `castVote()`: valida Merkle Proof, firma ECDSA, política re-voto. Patrón CEI + ReentrancyGuard |
-| `VoteRegistry.sol` | Estado canónico de sufragios por nullifier. Soporta sobrescritura (LAST_WINS) |
-| `TallyContract.sol` | Contadores incrementales por candidato. Resultados en tiempo real |
-| `AuditViewContract.sol` | Funciones `view/pure` para auditores externos (no muta estado) |
+| `BallotContract.sol` | Orquesta `castVote` / `castSignedVote`: Merkle + EIP-712; delega `recordVote` a `VoteRegistry` (VOTAR-346). Rechaza `ElectionClosed` (VOTAR-321). Patrón CEI + `whenNotPaused` |
+| `VoteRegistry.sol` | Estado canónico por `voterHash` (nullifier). `VoteCast` indexado; tallies LAST_WINS; views VOTAR-350 (`getParticipationStats`, `verifyReceipt`) |
+| `TallyContract.sol` | Contadores incrementales por candidato (aspiracional; tallies actuales viven en VoteRegistry) |
+| `AuditViewContract.sol` | Fachada `view` sin gas (VOTAR-350): estado, participación, votos por candidato, verificación de recibo anónimo |
 | `MerkleRootStore.sol` | Almacena y versiona Merkle Roots publicadas por la autoridad |
 | OZ: `MerkleProof.sol` | Verifica pertenencia al árbol (OpenZeppelin v5) |
 | OZ: `ECDSA.sol` | Recupera firmante del payload del voto (Ley 25.506) |
-| OZ: `AccessControl.sol` | RBAC: `ELECTION_ADMIN_ROLE`, `PAUSER_ROLE`, `MERKLE_UPDATER_ROLE`, `BALLOT_ROLE` |
+| OZ: `AccessControl.sol` | RBAC vía `VotarAccessControl`: `DEFAULT_ADMIN_ROLE`, `PAUSER_ROLE`, `MERKLE_UPDATER_ROLE`, `BALLOT_ROLE` (US-349) |
 | OZ: `Pausable.sol` | Circuit breaker en `castVote()` |
 
 ---
@@ -147,7 +147,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
   6. blockchainClient envía castVote(payload, sig, proof) → RPC → BallotContract
   7. BallotContract:
      a. Consulta MerkleRoot activa
-     b. MerkleProof.verify(proof, root, leaf) ← verifica padrón
+     b. MerkleProof.verify(proof, root, leaf) ← verifica padrón; revierte `InvalidMerkleProof` si falla (US-339)
      c. ECDSA.recover(payload, sig) ← verifica Firma Digital (Ley 25.506)
      d. Valida política re-voto (RevoteConfig)
      e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS)
@@ -325,4 +325,4 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **VOTO no tiene FK a VOTANTE**. El voto "nace huérfano de identidad" (diseño intencional Ley 25.326).
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
-- **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256). Cambio documentado en `diagramas/CambiosIA.md`.
+- **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).

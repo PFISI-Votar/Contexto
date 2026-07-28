@@ -1,10 +1,12 @@
 %% ============================================================================
 %% DIAGRAMA DE ENTIDAD-RELACIÓN — Plataforma VOTAR
 %% Proyecto Final de Ingeniería en Sistemas de Información
-%% UTN FRVM — Equipo 09
+%% UTN FRVM — Equipo 09 — Sprint 3
 %% ============================================================================
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
+%% Evolución Sprint 3 (on-chain, sin cambio de esquema relacional):
+%% - VOTAR-346 / VOTAR-350: auditoría pública vía VoteRegistry + AuditViewContract
 %% ============================================================================
 %% NOTA: Los campos 'estado' se implementarán como tipos ENUM de PostgreSQL
 %% para garantizar la integridad de datos y evitar anomalías de inserción.
@@ -120,7 +122,7 @@ erDiagram
         int id_eleccion FK, UK "Relación 1:1 con la elección"
         int total_votantes_habilitados "Cantidad total de votantes habilitados"
         datetime fecha_generacion "Fecha de generación/importación"
-        string hash_padron "Hash SHA-256 del padrón completo"
+        string hash_padron "Raíz Merkle Keccak-256 del padrón (64 hex, sin 0x). Sello de integridad (VOTAR-334)"
         string estado "BORRADOR | PUBLICADO | CERRADO"
         int total_procesados "US-331: filas de datos leídas del CSV"
         int total_omitidos "US-331: filas omitidas (defectuosas o duplicadas)"
@@ -140,7 +142,7 @@ erDiagram
     PADRON_VOTANTE {
         uuid id_padron_votante PK "Identificador de la relación"
         uuid id_padron FK "Padrón al que pertenece (UNIQUE compuesta con hash_hoja)"
-        int indice_hoja "Índice de la hoja en el Árbol de Merkle (secuencial por import)"
+        int indice_hoja "Índice canónico en el Árbol de Merkle (orden lexicográfico de hash_hoja — VOTAR-334)"
         string hash_hoja "Keccak-256 hex (64 chars) del votante = votanteHash. Anonimización Ley 25.326 — NO se persiste DNI plano. INDEXED."
         datetime generado_en "Timestamp de inserción (auditoría US 330)"
     }
@@ -151,18 +153,26 @@ erDiagram
 
     MERKLE_TREE {
         int id_merkle_tree PK "Identificador único del árbol"
-        int id_padron FK "Padrón del que se genera"
-        string merkle_root "Raíz del árbol de Merkle (hash hex)"
+        int id_padron FK, UK "Padrón del que se genera (1:1 en consolidación inicial)"
+        string merkle_root "Raíz Merkle bytes32 (66 hex con prefijo 0x)"
         int total_hojas "Cantidad total de hojas"
         int version "Versión del árbol (incrementa con regeneraciones)"
         datetime fecha_generacion "Fecha de generación del árbol"
         string estado "GENERADO | ACTIVO | PUBLICADO_ON_CHAIN | OBSOLETO"
+        jsonb tree_dump "Dump serializado StandardMerkleTree (VOTAR-334)"
+        string tx_hash_publicacion "Hash tx Sepolia (US-335)"
+        int numero_bloque "Bloque de confirmación on-chain"
+        datetime fecha_publicacion_on_chain "Timestamp publicación on-chain"
+        string direccion_contrato "Address MerkleRootStore compartido (interim US-335)"
     }
 
-    %% NOTA: Los Merkle Proofs NO se persisten en la base de datos.
-    %% Son datos derivados que se calculan en tiempo de ejecución por el
-    %% Backend API a partir del MERKLE_TREE y PADRON_VOTANTE bajo demanda.
-    %% Esto evita almacenar N registros JSON innecesarios (uno por votante).
+    %% NOTA VOTAR-334: Los Merkle Proofs NO se persisten por votante.
+    %% Se calculan on-demand desde tree_dump + indice_hoja de PADRON_VOTANTE.
+    %% Migración: AddMerkleTree1782400000000 en votar.back.
+    %% NOTA US-335: hasta US-337 el contrato MerkleRootStore es compartido
+    %% (una address global); merkle_root_almacenada en SMART_CONTRACT_ELECCION
+    %% queda reservada para despliegue per-comicio. La publicación actual
+    %% persiste tx_hash y direccion_contrato en MERKLE_TREE.
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% ACTORES DEL SISTEMA (Usuarios)
@@ -171,7 +181,7 @@ erDiagram
     AUTORIDAD_ELECTORAL {
         int id_autoridad PK "Identificador único de la autoridad"
         string nombre "Nombre completo"
-        string email_institucional UK "Email institucional"
+        string email UK "Email de contacto"
         string rol "ELECTION_ADMIN | PAUSER | MERKLE_UPDATER"
         string identificador_sso "Identificador del SSO/OIDC"
         datetime fecha_registro "Fecha de alta en el sistema"
@@ -240,41 +250,31 @@ erDiagram
         int id_candidato FK "Candidato seleccionado (null si voto en blanco)"
     }
 
-    %% Capa off-chain BUD: recepción e idempotencia sin selección en claro.
-    %% No reemplaza al VOTO anónimo ni persiste candidatos seleccionados.
-    %% Restricciones: UNIQUE(id_eleccion, votante_hash) y UNIQUE(id_eleccion, idempotency_key).
-    VOTO_CONFIRMACION {
-        uuid id_voto_confirmacion PK "Identificador de la confirmación off-chain (US BUD)"
-        int id_eleccion FK "Comicio confirmado"
-        string votante_hash "Hash de sesión/padrón (64 hex). Anti doble voto pre-chain"
-        uuid idempotency_key "Clave idempotente del cliente"
-        string payload_hash "SHA-256 del payload confirmado (sin selección en claro)"
-        string comprobante_hash "SHA-256 del comprobante devuelto al votante"
-        string estado "RECIBIDO"
-        datetime recibido_en "Timestamp de recepción"
-    }
-
     %% ═══════════════════════════════════════════════════════════════════════
-    %% TRANSACCIONES BLOCKCHAIN (Registro off-chain de txs on-chain)
+    %% RECIBO DE PARTICIPACIÓN (VOTAR-360) — artefacto client-side + on-chain
+    %% VOTAR-379 eliminó VOTO_CONFIRMACION (puente votante_hash ↔ payload).
+    %% El recibo PDF se genera SOLO en el navegador (no se almacena en servidor).
+    %% Clave de verificación pública = TransactionHash (evento SignedVoteCast).
+    %% FirmaDigital = firma ECDSA del sistema sobre payload canónico
+    %% (ElectionID|txHash|blockNumber|timestamp), sin persistir el PDF.
+    %% Entidades aspiracionales (no TypeORM en Sprint 2):
     %% ═══════════════════════════════════════════════════════════════════════
 
     TRANSACCION_BLOCKCHAIN {
-        int id_transaccion PK "Identificador interno de la transacción"
-        int id_voto FK, UK "Voto asociado a esta transacción"
-        string hash_transaccion UK "Hash de la transacción en la blockchain"
-        int numero_bloque "Número del bloque en la cadena"
+        string hash_transaccion UK "TransactionHash on-chain (clave de verificación E2E)"
+        int id_eleccion "Elección del evento SignedVoteCast"
+        int numero_bloque "Bloque de inclusión"
         datetime timestamp "Timestamp del bloque"
-        string estado "PENDIENTE | CONFIRMADA | FALLIDA"
-        int gas_usado "Gas consumido por la transacción"
-        string direccion_contrato "Address del contrato destino"
+        string estado "CONFIRMADA (status=1 + SignedVoteCast)"
+        string direccion_contrato "BallotContract"
     }
 
     RECIBO_VOTACION {
-        int id_recibo PK "Identificador interno del recibo"
-        int id_transaccion FK, UK "Transacción asociada"
-        string hash_voto "Hash del voto emitido"
-        datetime fecha_emision "Fecha de emisión del recibo"
-        string codigo_verificacion UK "Código para verificación E2E"
+        string hash_transaccion UK "Mismo TransactionHash del QR / portal /verificar"
+        int id_eleccion "ElectionID impreso en el PDF"
+        datetime timestamp "Timestamp impreso en el PDF"
+        string firma_digital "FirmaDigital del sistema de auditoría"
+        string origen "CLIENT_SIDE_PDF — nunca persistido en BD"
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
@@ -314,13 +314,15 @@ erDiagram
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | CONTRATO_DESPLEGADO"
-        datetime timestamp "Timestamp del evento"
-        string actor "Identificador del actor (autoridad/sistema)"
-        string descripcion "Descripción del evento"
-        string hash_registro "Hash del registro para integridad"
-        string ip_origen "IP de origen del evento"
-        string datos_adicionales "JSON con datos extra del evento"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO"
+        datetime timestamp "Timestamp UTC del evento"
+        string actor "Operador ofuscado (SHA-256+salt). ANONIMO para VOTO_EMITIDO — VOTAR-379/370"
+        string descripcion "Descripción del evento (sin IP en claro)"
+        string hash_registro "Firma criptográfica SHA-256 del bloque actual"
+        string hash_anterior "Firma del bloque previo (encadenamiento VOTAR-370); génesis = 64 ceros"
+        string ip_origen "Identificador de terminal criptográfico (hash de IP); null en VOTO_EMITIDO"
+        string endpoint "Ruta o origen del evento"
+        string datos_adicionales "JSON enriquecido; sin campos joinables a SSO en eventos de voto; append-only triggers PG VOTAR-372"
     }
 
     ACTIVIDAD_ELECTORAL {
@@ -382,9 +384,9 @@ erDiagram
     CONFIGURACION_DATOS_CANDIDATO ||--|{ CAMPO_DATOS_CANDIDATO : "compone"
 
     %% --- Padrón y votantes ---
-    %% Un padrón puede tener múltiples árboles de Merkle (historial de
-    %% regeneraciones). Solo uno estará en estado ACTIVO/PUBLICADO_ON_CHAIN.
-    PADRON_ELECTORAL ||--|{ MERKLE_TREE : "genera"
+    %% VOTAR-334: consolidación criptográfica al importar CSV. 1:1 padron↔merkle_tree
+    %% en la versión inicial; version permite historial futuro de regeneraciones.
+    PADRON_ELECTORAL ||--|| MERKLE_TREE : "consolida (sello Merkle)"
     PADRON_ELECTORAL ||--|{ PADRON_VOTANTE : "incluye (anonimizado por hash)"
     %% NOTA Sprint 1 (US 330): se elimina la FK VOTANTE → PADRON_VOTANTE.
     %% PADRON_VOTANTE ya no referencia identidad civil; sólo persiste hash Keccak-256.
@@ -395,16 +397,16 @@ erDiagram
     OBSERVADOR ||--o{ OBSERVADOR_ELECCION : "tiene asignaciones"
     ELECCION ||--o{ OBSERVADOR_ELECCION : "observada por"
 
-    %% --- Votos anónimos (SIN FK a Votante — Ley 25.326) ---
+    %% --- Votos anónimos (SIN FK a Votante — Ley 25.326 / VOTAR-379) ---
     ELECCION ||--o{ VOTO : "recibe"
-    ELECCION ||--o{ VOTO_CONFIRMACION : "registra confirmaciones BUD"
     VOTO ||--|{ VOTO_DETALLE : "contiene"
     VOTO_DETALLE }o--|| CATEGORIA : "corresponde a"
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
 
-    %% --- Cadena criptográfica del voto ---
-    VOTO ||--|| TRANSACCION_BLOCKCHAIN : "produce"
-    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "emite"
+    %% --- Recibo / verificación (VOTAR-360, sin tabla off-chain de identidad) ---
+    %% Evidencia on-chain: SignedVoteCast → TRANSACCION_BLOCKCHAIN (derivada)
+    %% Recibo PDF: RECIBO_VOTACION client-side ligado solo por hash_transaccion
+    TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "materializa PDF local"
 
     %% --- Billetera efímera (sin FK permanente a Votante) ---
     BILLETERA_EFIMERA ||--o{ VOTO : "firma"

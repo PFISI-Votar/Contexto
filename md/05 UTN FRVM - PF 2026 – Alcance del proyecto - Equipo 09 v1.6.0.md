@@ -268,6 +268,12 @@ Constituye el frontend crítico orientado al votante, responsable de garantizar 
 
 * **Accesibilidad y Usabilidad Electoral en el Cliente:** Incorporación de pautas de accesibilidad web (ej. estándares WCAG) en la interfaz de la BUD, incluyendo soporte para lectores de pantalla, modos de alto contraste y navegación adaptada por teclado, garantizando que todos los electores habilitados puedan emitir su sufragio de forma autónoma y sin barreras.
 
+* **Boleta Única Digital Responsiva:** Presentación de candidatos en tarjetas legibles para móviles, tablets y escritorio, con selección exclusiva por categoría, fotografía o fallback visual, nombre completo, agrupación política y número de lista oficializada. La interfaz utiliza indicadores visuales claros de selección activa y mantiene contraste compatible con WCAG 2.1 AA.
+
+* **Privacidad hasta la Confirmación:** Las interacciones de selección se mantienen localmente en el navegador. El backend sólo recibe la decisión electoral cuando el votante ejecuta la acción final de confirmar voto. Para prevenir doble envío, la confirmación incorpora una clave de idempotencia y registra únicamente metadatos técnicos y hashes de comprobante, sin persistir la selección en claro.
+
+* **Contrato Backend de BUD:** Exposición de servicios específicos para obtener la boleta digital publicada y confirmar el voto, validando sesión de votante, pertenencia al padrón, estado del comicio, listas oficializadas, candidatos válidos y reglas como voto en blanco cuando se encuentre habilitado en la configuración del comicio.
+
 ## **Módulo de Transparencia y Auditoría (Dashboard Público)** {#módulo-de-transparencia-y-auditoría-(dashboard-público)}
 
 Plataforma de solo lectura, accesible para cualquier ciudadano o auditor externo, conectada directamente a la red blockchain a través de nodos RPC (Remote Procedure Call). Contempla:
@@ -355,6 +361,15 @@ Los criterios de aceptación definen las condiciones obligatorias para la recepc
 * **Validación del Smart Contract**: Los contratos inteligentes deben superar las pruebas unitarias en entornos locales (Hardhat) y estar desplegados y verificados en la red Sepolia.
 
 * **Usabilidad y Eficiencia**: Un usuario sin conocimientos técnicos debe ser capaz de emitir su voto en la Boleta Única Digital (BUD) en un tiempo inferior a 3 minutos.
+
+| Criterio / UAT | Dado | Cuando | Entonces |
+| :--- | :--- | :--- | :--- |
+| Selección exclusiva por categoría | La BUD muestra más de un candidato para una categoría | El votante selecciona un nuevo candidato de esa misma categoría | La selección anterior se desmarca automáticamente y queda activa sólo la nueva opción |
+| UAT-01 Selección cruzada | La BUD muestra categorías distintas, por ejemplo Presidente y Vocales | El votante selecciona un candidato en cada categoría | Ambas selecciones permanecen activas simultáneamente |
+| UAT-02 Accesibilidad por teclado | El votante navega sin mouse | Usa TAB para recorrer la boleta y SPACE o ENTER para seleccionar | El foco avanza de forma lógica y cada opción anuncia nombre, agrupación política y número de lista |
+| UAT-03 Cambio de dispositivo | La BUD está abierta en escritorio | Se redimensiona el navegador a tablet o móvil | Las tarjetas se reorganizan sin solapamiento ni pérdida de información |
+| UAT-04 Privacidad de telemetría | El votante interactúa con tarjetas de candidatos | Cambia selecciones antes de confirmar | No se emite ninguna petición de confirmación al backend hasta presionar “Confirmar Voto” |
+| Confirmación idempotente | El votante presiona confirmar y ocurre un reintento de red o doble click | El cliente reenvía la misma clave de idempotencia con el mismo payload | El backend devuelve el mismo comprobante sin registrar un segundo voto |
 
 * **Cumplimiento Académico y Normativo**: Entrega de todos los artefactos requeridos por la cátedra en los plazos establecidos y alineación con las leyes N° 25506 (Firma Digital) y N° 25326 (Protección de Datos Personales).
 
