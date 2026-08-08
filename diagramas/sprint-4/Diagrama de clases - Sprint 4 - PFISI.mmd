@@ -4,6 +4,7 @@
 %% UTN FRVM — Equipo 09 — Sprint 4
 %% ============================================================================
 %% Evolución respecto a Sprint 3:
+%% - VOTAR-367: ficha técnica on-chain en /dashboard/estado + API contrato-estado-publica
 %% - VOTAR-329: getRevoteStats (totalRevotes, uniqueVoters, overwriteRatio) en AuditViewContract
 %% - Dashboard público: sección /revoto + API revoto-stats-publica
 %% Hereda Sprint 3:
@@ -339,6 +340,18 @@ classDiagram
         +overwriteRatio decimal
     }
 
+    class MetadatosContratoPublico {
+        <<value object>>
+        +estadoOnChain EleccionEstado
+        +merkleRoot Hash
+        +merklePublicado boolean
+        +merklePublicadoEn DateTime
+        +revoteHabilitado boolean
+        +maxVotosPorVotante int
+        +minIntervaloSegundos int
+        +politicaRevoto PoliticaRevoto
+    }
+
     %% ── Composición y asociaciones ───────────────────────────────────────
     Eleccion "1" *-- "1" ConfiguracionComicio : configura
     Eleccion "1" *-- "1" Boleta : publica
@@ -389,6 +402,8 @@ classDiagram
     RegistroVoto ..> StatsRevoto : agrega (VOTAR-329)
     VistaAuditoria ..> StatsParticipacion : retorna
     VistaAuditoria ..> StatsRevoto : retorna (VOTAR-329)
+    VistaAuditoria ..> MetadatosContratoPublico : agrega estado + Merkle (VOTAR-367)
+    AlmacenRaizMerkle ..> MetadatosContratoPublico : raíz / publicación
 
     note for Eleccion "US-316: inicializarEnBorrador() crea el archivo\nen capa relacional sin despliegue blockchain.\nUS-319: oficializarOferta() bloqueada si alguna\nlista no alcanza minimoPostulantes por categoría."
     note for PadronVotante "US-330: solo hash Keccak-256 (DNI+email).\nSin FK a Votante ni PII en texto plano (Ley 25.326)."
@@ -397,6 +412,6 @@ classDiagram
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
     note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry\n(voterHash=nullifier; sin indexar wallet).\nVOTAR-341: enforceRevotePolicy → RevoteDisabled\nsi !revoteEnabled y nullifier ya votó."
     note for RegistroVoto "VOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
-    note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). verifyReceipt usa ancla anónima\n(nullifier), no TransactionHash off-chain."
+    note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). VOTAR-367: getElectionState +\nmerkleRootStore para ficha técnica pública.\nverifyReceipt usa ancla anónima (nullifier)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
     note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."
