@@ -171,8 +171,8 @@ model {
       description "Plataforma de auditoría ciudadana y visualización de resultados en tiempo real"
 
       statsViewer = component "Visualizador de Resultados" {
-        technology "React / Chart.js"
-        description "Presenta estadísticas de participación y gráficos de escrutinio en tiempo real"
+        technology "React / Recharts"
+        description "Secciones públicas: resumen, escrutinio (VOTAR-364), participación (VOTAR-365), re-voto (VOTAR-329), padrón, oferta y estado. Polling periódico cuando el comicio está abierto"
       }
       blockScanner = component "Escáner Blockchain" {
         technology "Ethers.js"
@@ -187,8 +187,8 @@ model {
     // Capa Backend Tradicional
     api = backend "API Backend" {
       #offchain
-      technology "Node.js (Express) / Python (FastAPI)"
-      description "Motor off-chain de desvinculación de identidad, construcción de Árboles de Merkle, validación de reglas electorales y orquestación del ciclo de vida del comicio (Ley 25.326 PII nunca toca on-chain)"
+      technology "NestJS 11 / TypeORM / PostgreSQL 16"
+      description "Motor off-chain de desvinculación de identidad, construcción de Árboles de Merkle, validación de reglas electorales y orquestación del ciclo de vida del comicio (Ley 25.326 PII nunca toca on-chain). Expone módulos: elección, padrón, voto, escrutinio, dashboard-publico"
 
       apiRouter = component "Controlador de Rutas API" {
         technology "Express / FastAPI / OpenAPI 3.1"
@@ -308,7 +308,7 @@ model {
       voteRegistry = component "VoteRegistry.sol" {
         #web3 #security
         technology "Solidity / VotarAccessControl (VOTAR-346/350)"
-        description "Registro canónico keyed por voterHash anónimo (nullifier). recordVote solo BALLOT_ROLE + whenNotPaused. Emite VoteCast(electionId indexed, voterHash indexed, candidateId, isOverwrite) sin wallet. Tallies O(1) incl. VOTO_BLANCO/VOTO_NULO. VOTAR-341: revoteEnabled inmutable (default false) → RevoteDisabled en segundo voto; overwrite solo si true (VOTAR-344). VOTAR-350 views: getParticipationStats, getVotesByCandidate, verifyReceipt(receiptHash=voterHash). Pause no bloquea lecturas. Nota: bandera global por deploy (1 registry/comicio); deuda si se comparte entre elecciones"
+        description "Registro canónico keyed por voterHash anónimo (nullifier). recordVote solo BALLOT_ROLE + whenNotPaused. Emite VoteCast(electionId indexed, voterHash indexed, candidateId, isOverwrite) sin wallet. Tallies O(1) incl. VOTO_BLANCO/VOTO_NULO. VOTAR-341: revoteEnabled inmutable (default false) → RevoteDisabled en segundo voto; overwrite solo si true (VOTAR-344). VOTAR-329: contador _totalRevotes + getRevoteStats → (totalRevotes, uniqueVoters, overwriteRatio WAD). VOTAR-350 views: getParticipationStats, getVotesByCandidate, verifyReceipt(receiptHash=voterHash). Pause no bloquea lecturas. Nota: bandera global por deploy (1 registry/comicio); deuda si se comparte entre elecciones"
       }
 
       // ── Contador / Escrutinio ───────────────────────────────────────
@@ -327,7 +327,7 @@ model {
       auditViewContract = component "AuditViewContract.sol" {
         #web3
         technology "Solidity Smart Contract (view) — VOTAR-350"
-        description "Fachada pública sin gas para auditores: getElectionState(electionId), getParticipationStats → (totalVotes, blankVotes, nullVotes), getVotesByCandidate(electionId, candidateId) → 0 si desconocido, verifyReceipt(receiptHash) → bool (ancla nullifier/voterHash, sin identidad). Delega a MerkleRootStore + VoteRegistry. Sin whenNotPaused: lecturas disponibles con registro en pausa (UAT-04)"
+        description "Fachada pública sin gas para auditores: getElectionState(electionId), getParticipationStats → (totalVotes, blankVotes, nullVotes), getVotesByCandidate(electionId, candidateId) → 0 si desconocido, verifyReceipt(receiptHash) → bool (ancla nullifier/voterHash, sin identidad), getRevoteStats(electionId) → (totalRevotes, uniqueVoters, overwriteRatio WAD) — VOTAR-329. Delega a MerkleRootStore + VoteRegistry. Sin whenNotPaused: lecturas disponibles con registro en pausa (UAT-04)"
       }
 
       // ── Almacenamiento de Merkle Roots ───────────────────────────────
@@ -470,7 +470,7 @@ model {
   rpc -> votar.contracts.ballotContract "Proxy para castSignedVote()/castVote() y lecturas de estado"
   rpc -> votar.contracts.merkleRootStore "Proxy para publishRoot() (MERKLE_UPDATER_ROLE)"
   rpc -> votar.contracts.tallyContract "Lecturas view del escrutinio para Dashboard"
-  rpc -> votar.contracts.auditViewContract "Lecturas view sin gas (VOTAR-350): estado, participación, tallies, recibos"
+  rpc -> votar.contracts.auditViewContract "Lecturas view sin gas (VOTAR-350/329): estado, participación, tallies, recibos, revote stats"
 
   // Flujo interno On-Chain
   votar.contracts.electionFactory -> votar.contracts.ballotContract "Despliega BallotContract por comicio"
@@ -496,7 +496,7 @@ model {
   votar.contracts.voteRegistry -> votar.contracts.ozAccessControl "onlyRole(BALLOT_ROLE): solo BallotContract escribe"
   votar.contracts.tallyContract -> votar.contracts.ozAccessControl "onlyRole(BALLOT_ROLE) para mutar contadores"
   votar.contracts.merkleRootStore -> votar.contracts.ozAccessControl "onlyRole(MERKLE_UPDATER_ROLE)"
-  votar.contracts.auditViewContract -> votar.contracts.voteRegistry "getParticipationStats / getVotesByCandidate / verifyReceipt (VOTAR-350)"
+  votar.contracts.auditViewContract -> votar.contracts.voteRegistry "getParticipationStats / getVotesByCandidate / verifyReceipt / getRevoteStats (VOTAR-350/329)"
   votar.contracts.auditViewContract -> votar.contracts.merkleRootStore "getElectionState (view)"
 }
 

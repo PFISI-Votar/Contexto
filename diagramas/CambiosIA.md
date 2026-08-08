@@ -4,6 +4,31 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-08] — Sprint 3 — VOTAR-329 estadísticas de re-voto en Dashboard
+
+- **Tipo de cambio**: Implementación on-chain + API + UI de métricas de re-voto
+- **Motivo**:
+  - Cumplir criterio de aceptación: `AuditViewContract.getRevoteStats(id)` → `(totalRevotes, uniqueVoters, overwriteRatio)`
+  - Exponer analíticas agregadas de sobreescritura en dashboard público sin autenticación
+  - Actualizar documentación de contexto con stack real (NestJS, React 19) y estado de repos
+
+- **Cambios específicos**:
+  1. `VoteRegistry`: contador `_totalRevotes` incrementado en cada `isOverwrite=true`
+  2. `AuditViewContract.getRevoteStats` delega a `VoteRegistry` (ratio WAD on-chain)
+  3. Back: `GET /elecciones/:id/revoto-stats-publica` + curva temporal de sobreescritura
+  4. Front: sección `/dashboard/revoto` con polling 4s (UAT-02)
+  5. C4 Sprint 3: descripción actualizada de `AuditViewContract` y `VoteRegistry`
+  6. Diagrama de clases: `StatsRevoto`, `getRevoteStats` en `RegistroVoto` y `VistaAuditoria`
+  7. `contexto-sistema.md`: sección 18 con repos, rutas del dashboard y tickets recientes
+
+- **User Stories relacionadas**: VOTAR-329
+
+- **PRs**: blockchain #36, back #66, front #80
+
+- **Archivos**: `Contexto/contexto-sistema.md`, `Contexto/diagramas/sprint-3/votar.c4`, `Contexto/diagramas/sprint-3/Diagrama de clases - Sprint 3 - PFISI.mmd`, `Contexto/diagramas/sprint-3/secuencia-revoto-stats-votar-329.mmd`
+
+---
+
 ## [2026-07-17] — Sprint 3 — VOTAR-341 unicidad sin re-voto
 
 - **Tipo de cambio**: Alineación on-chain de política de revoto (`RevoteDisabled`)
