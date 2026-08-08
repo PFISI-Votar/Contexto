@@ -327,6 +327,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
+- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-4/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
 
 ---
 
@@ -337,7 +338,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `PFISI-Votar/blockchain` | Hardhat / Solidity | `dev` | test + Slither |
 | `PFISI-Votar/back` | NestJS / TypeORM | `dev` | lint + test + e2e |
 | `PFISI-Votar/front` | React / Vite | `dev` | Prettier + ESLint + Vitest |
-| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow) |
+| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-4/votar.c4`) |
 
 ### Dashboard Público — secciones implementadas
 

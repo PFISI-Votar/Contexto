@@ -1,12 +1,14 @@
 %% ============================================================================
 %% DIAGRAMA DE CLASES — Plataforma VOTAR (Modelo de Análisis)
 %% Proyecto Final de Ingeniería en Sistemas de Información
-%% UTN FRVM — Equipo 09 — Sprint 3
+%% UTN FRVM — Equipo 09 — Sprint 4
 %% ============================================================================
-%% Evolución respecto a Sprint 2:
+%% Evolución respecto a Sprint 3:
+%% - VOTAR-329: getRevoteStats (totalRevotes, uniqueVoters, overwriteRatio) en AuditViewContract
+%% - Dashboard público: sección /revoto + API revoto-stats-publica
+%% Hereda Sprint 3:
 %% - VOTAR-346: VoteRegistry + evento VoteCast indexado (auditoría pública sin wallet)
 %% - VOTAR-350: AuditViewContract — views sin gas (estado, participación, tallies, recibo)
-%% - BallotContract delega recordVote al registry (voterHash = nullifier en firmado)
 %% ============================================================================
 
 classDiagram
@@ -310,6 +312,7 @@ classDiagram
         +getParticipationStats(eleccionId int) StatsParticipacion
         +getVotesByCandidate(eleccionId int, candidatoId int) int
         +verifyReceipt(receiptHash Hash) boolean
+        +getRevoteStats(eleccionId int) StatsRevoto
         +getVoterState(eleccionId int, voterHash Hash) EstadoVotante
     }
 
@@ -319,6 +322,7 @@ classDiagram
         +getParticipationStats(eleccionId int) StatsParticipacion
         +getVotesByCandidate(eleccionId int, candidatoId int) int
         +verifyReceipt(receiptHash Hash) boolean
+        +getRevoteStats(eleccionId int) StatsRevoto
     }
 
     class StatsParticipacion {
@@ -326,6 +330,13 @@ classDiagram
         +totalVotes int
         +blankVotes int
         +nullVotes int
+    }
+
+    class StatsRevoto {
+        <<value object>>
+        +totalRevotes int
+        +uniqueVoters int
+        +overwriteRatio decimal
     }
 
     %% ── Composición y asociaciones ───────────────────────────────────────
@@ -375,7 +386,9 @@ classDiagram
     MerkleTree --> Hash : merkle_root
     PadronElectoral --> Hash : hash_padron
     RegistroVoto ..> StatsParticipacion : agrega
+    RegistroVoto ..> StatsRevoto : agrega (VOTAR-329)
     VistaAuditoria ..> StatsParticipacion : retorna
+    VistaAuditoria ..> StatsRevoto : retorna (VOTAR-329)
 
     note for Eleccion "US-316: inicializarEnBorrador() crea el archivo\nen capa relacional sin despliegue blockchain.\nUS-319: oficializarOferta() bloqueada si alguna\nlista no alcanza minimoPostulantes por categoría."
     note for PadronVotante "US-330: solo hash Keccak-256 (DNI+email).\nSin FK a Votante ni PII en texto plano (Ley 25.326)."
@@ -384,6 +397,6 @@ classDiagram
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
     note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry\n(voterHash=nullifier; sin indexar wallet).\nVOTAR-341: enforceRevotePolicy → RevoteDisabled\nsi !revoteEnabled y nullifier ya votó."
     note for RegistroVoto "VOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
-    note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nverifyReceipt usa ancla anónima (nullifier),\nno TransactionHash off-chain (eso es VOTAR-360)."
+    note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). verifyReceipt usa ancla anónima\n(nullifier), no TransactionHash off-chain."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
     note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."

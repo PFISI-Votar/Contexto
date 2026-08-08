@@ -1,0 +1,38 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e8f1f8', 'primaryTextColor': '#202124', 'primaryBorderColor': '#2f6f9f', 'lineColor': '#5f6368', 'fontFamily': 'Inter, sans-serif'}}}%%
+%% DIAGRAMA DE SECUENCIA — Cierre del comicio (VOTAR-321)
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09 — Sprint 3
+sequenceDiagram
+  autonumber
+  actor Autoridad as Autoridad Electoral
+  participant Panel as Panel Admin (Front)
+  participant API as API NestJS
+  participant Life as CierreComicioService
+  participant SC as MerkleRootStore + BallotContract
+  participant DB as PostgreSQL
+  participant Bud as BUD / Dashboard Público
+
+  Note over Autoridad,Bud: Cierre manual anticipado
+  Autoridad->>Panel: Cerrar comicio (ABIERTA)
+  Panel->>API: POST /elecciones/:id/cerrar
+  API->>Life: cerrarManual(actorId)
+  Life->>SC: setElectionState(electionId, CLOSED)
+  SC-->>Life: ElectionStateChanged(CLOSED)
+  Life->>DB: estado = CERRADA
+  Life->>DB: congelar snapshot (mostrar_resultados_tiempo_real=false)
+  Life->>DB: audit COMICIO_CERRADO
+  Life-->>API: CERRADA + snapshotCongelado
+  API-->>Panel: 200 EleccionResponse
+  Panel-->>Bud: WebSocket eleccion:cerrada / invalidación cache
+
+  Note over Bud,SC: Intentos de voto post-cierre
+  Bud->>API: GET boleta-digital / POST emitido-anonimo
+  API-->>Bud: HTTP 410 Gone
+  Bud->>SC: castVote / castSignedVote (bypass UI)
+  SC-->>Bud: revert ElectionClosed
+
+  Note over API,SC: Cierre autónomo por tiempo
+  API->>API: CierreAutomaticoScheduler (fechaFin ≤ now)
+  API->>Life: cerrarAutomatico(SYSTEM)
+  Life->>SC: setElectionState(CLOSED)
+  Note over SC: Aunque el backend demore,<br/>BallotContract ya rechaza si<br/>block.timestamp ≥ endTime

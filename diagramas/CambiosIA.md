@@ -4,28 +4,29 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
-## [2026-08-08] — Sprint 3 — VOTAR-329 estadísticas de re-voto en Dashboard
+## [2026-08-08] — Sprint 4 — VOTAR-329 estadísticas de re-voto en Dashboard
 
-- **Tipo de cambio**: Implementación on-chain + API + UI de métricas de re-voto
+- **Tipo de cambio**: Nueva carpeta `diagramas/sprint-4/` + implementación on-chain / API / UI
 - **Motivo**:
-  - Cumplir criterio de aceptación: `AuditViewContract.getRevoteStats(id)` → `(totalRevotes, uniqueVoters, overwriteRatio)`
-  - Exponer analíticas agregadas de sobreescritura en dashboard público sin autenticación
-  - Actualizar documentación de contexto con stack real (NestJS, React 19) y estado de repos
+  - Documentar Sprint 4 en Contexto (norma: no editar in-place Sprint 3)
+  - Cumplir criterio: `AuditViewContract.getRevoteStats(id)` → `(totalRevotes, uniqueVoters, overwriteRatio)`
+  - Reflejar stack real (NestJS 11, React 19) y dashboard público ampliado
 
 - **Cambios específicos**:
-  1. `VoteRegistry`: contador `_totalRevotes` incrementado en cada `isOverwrite=true`
-  2. `AuditViewContract.getRevoteStats` delega a `VoteRegistry` (ratio WAD on-chain)
-  3. Back: `GET /elecciones/:id/revoto-stats-publica` + curva temporal de sobreescritura
-  4. Front: sección `/dashboard/revoto` con polling 4s (UAT-02)
-  5. C4 Sprint 3: descripción actualizada de `AuditViewContract` y `VoteRegistry`
-  6. Diagrama de clases: `StatsRevoto`, `getRevoteStats` en `RegistroVoto` y `VistaAuditoria`
-  7. `contexto-sistema.md`: sección 18 con repos, rutas del dashboard y tickets recientes
+  1. Creada carpeta `diagramas/sprint-4/` (DER, clases, C4, secuencias heredadas + nueva VOTAR-329)
+  2. `VoteRegistry`: contador `_totalRevotes` + `getRevoteStats`
+  3. `AuditViewContract.getRevoteStats` delega a `VoteRegistry` (ratio WAD)
+  4. Back: `GET /elecciones/:id/revoto-stats-publica` + curva temporal
+  5. Front: `/dashboard/revoto` con polling 4s (UAT-02)
+  6. Diagrama de clases Sprint 4: `StatsRevoto`, métodos en `RegistroVoto` y `VistaAuditoria`
+  7. C4 Sprint 4: NestJS, Recharts, sección re-voto en dashboard
+  8. `contexto-sistema.md`: sección 18 (repos, rutas, tickets)
 
-- **User Stories relacionadas**: VOTAR-329
+- **User Stories relacionadas**: VOTAR-329 (Sprint 4)
 
-- **PRs**: blockchain #36, back #66, front #80
+- **PRs**: Contexto #30, blockchain #36, back #66, front #80
 
-- **Archivos**: `Contexto/contexto-sistema.md`, `Contexto/diagramas/sprint-3/votar.c4`, `Contexto/diagramas/sprint-3/Diagrama de clases - Sprint 3 - PFISI.mmd`, `Contexto/diagramas/sprint-3/secuencia-revoto-stats-votar-329.mmd`
+- **Archivos**: `Contexto/diagramas/sprint-4/*`, `Contexto/contexto-sistema.md`
 
 ---
 
