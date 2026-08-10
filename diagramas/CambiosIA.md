@@ -4,6 +4,32 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-08] — Sprint 4 — VOTAR-329 estadísticas de re-voto en Dashboard
+
+- **Tipo de cambio**: Nueva carpeta `diagramas/sprint-4/` + implementación on-chain / API / UI
+- **Motivo**:
+  - Documentar Sprint 4 en Contexto (norma: no editar in-place Sprint 3)
+  - Cumplir criterio: `AuditViewContract.getRevoteStats(id)` → `(totalRevotes, uniqueVoters, overwriteRatio)`
+  - Reflejar stack real (NestJS 11, React 19) y dashboard público ampliado
+
+- **Cambios específicos**:
+  1. Creada carpeta `diagramas/sprint-4/` (DER, clases, C4, secuencias heredadas + nueva VOTAR-329)
+  2. `VoteRegistry`: contador `_totalRevotes` + `getRevoteStats`
+  3. `AuditViewContract.getRevoteStats` delega a `VoteRegistry` (ratio WAD)
+  4. Back: `GET /elecciones/:id/revoto-stats-publica` + curva temporal
+  5. Front: `/dashboard/revoto` con polling 4s (UAT-02)
+  6. Diagrama de clases Sprint 4: `StatsRevoto`, métodos en `RegistroVoto` y `VistaAuditoria`
+  7. C4 Sprint 4: NestJS, Recharts, sección re-voto en dashboard
+  8. `contexto-sistema.md`: sección 18 (repos, rutas, tickets)
+
+- **User Stories relacionadas**: VOTAR-329 (Sprint 4)
+
+- **PRs**: Contexto #30, blockchain #36, back #66, front #80
+
+- **Archivos**: `Contexto/diagramas/sprint-4/*`, `Contexto/contexto-sistema.md`
+
+---
+
 ## [2026-07-17] — Sprint 3 — VOTAR-341 unicidad sin re-voto
 
 - **Tipo de cambio**: Alineación on-chain de política de revoto (`RevoteDisabled`)
