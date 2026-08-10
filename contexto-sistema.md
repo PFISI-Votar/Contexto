@@ -350,7 +350,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `/dashboard/revoto` | **VOTAR-329** (en PR) | `getRevoteStats` + curva acumulativa de sobreescritura |
 | `/dashboard/padron` | VOTAR-333 | Total habilitados (público) |
 | `/dashboard/oferta` | VOTAR-318 | Oferta electoral publicada |
-| `/dashboard/estado` | VOTAR-320/321 | Estado lifecycle on-chain |
+| `/dashboard/estado` | **VOTAR-367** (en PR) | `getElectionState` + `getMerkleRoot` + direcciones + límites re-voto |
 
 ### API pública del dashboard (sin autenticación)
 
@@ -359,11 +359,13 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `GET /elecciones/:id/resultados` | Escrutinio agregado (VOTAR-364) |
 | `GET /elecciones/:id/participacion-publica` | Métricas de afluencia (VOTAR-365) |
 | `GET /elecciones/:id/revoto-stats-publica` | Estadísticas de re-voto (VOTAR-329) |
+| `GET /elecciones/:id/contrato-estado-publica` | Metadatos técnicos del contrato (VOTAR-367) |
 
 ### Funcionalidades recientes entregadas / en PR
 
 | Ticket | Estado | Descripción |
 |---|---|---|
+| VOTAR-367 | PR abierta (#67 back, #81 front) | Ficha técnica del smart contract en dashboard (/estado) |
 | VOTAR-329 | PR abierta (#36 blockchain, #66 back, #80 front) | Estadísticas agregadas de re-voto en dashboard |
 | VOTAR-344 | Mergeado en dev (blockchain) | Re-voto con corrección atómica de contadores |
 | VOTAR-350 | Mergeado | Views de auditoría pública (`AuditViewContract`) |

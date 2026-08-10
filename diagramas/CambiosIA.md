@@ -4,6 +4,22 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-08] — Sprint 4 — VOTAR-367 visualización del estado del contrato
+
+- **Tipo de cambio**: Secuencia + clases + contexto-sistema
+- **Motivo**:
+  - Documentar exposición pública de metadatos criptográficos (direcciones, estado on-chain, Merkle, re-voto)
+  - Alinear diagramas con `GET /elecciones/:id/contrato-estado-publica` y `/dashboard/estado`
+- **Cambios específicos**:
+  1. Nueva secuencia `secuencia-estado-contrato-votar-367.mmd`
+  2. Clases Sprint 4: `MetadatosContratoPublico` + relaciones con `VistaAuditoria` / `AlmacenRaizMerkle`
+  3. `contexto-sistema.md`: ruta `/dashboard/estado`, endpoint público y ticket en PR
+- **User Stories relacionadas**: VOTAR-367 (Sprint 4)
+- **PRs**: Contexto (esta PR), back #67, front #81
+- **Archivos**: `diagramas/sprint-4/secuencia-estado-contrato-votar-367.mmd`, `Diagrama de clases - Sprint 4 - PFISI.mmd`, `contexto-sistema.md`
+
+---
+
 ## [2026-08-08] — Sprint 4 — VOTAR-329 estadísticas de re-voto en Dashboard
 
 - **Tipo de cambio**: Nueva carpeta `diagramas/sprint-4/` + implementación on-chain / API / UI
