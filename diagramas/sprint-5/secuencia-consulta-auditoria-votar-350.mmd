@@ -1,0 +1,41 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e8f1f8', 'primaryTextColor': '#202124', 'primaryBorderColor': '#2f6f9f', 'lineColor': '#5f6368', 'fontFamily': 'Inter, sans-serif'}}}%%
+%% DIAGRAMA DE SECUENCIA — Consultas view de auditoría (VOTAR-350)
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09 — Sprint 3
+sequenceDiagram
+  autonumber
+  actor Auditor as Auditor / Observador
+  participant RPC as Nodo RPC público
+  participant AV as AuditViewContract
+  participant MRS as MerkleRootStore
+  participant VR as VoteRegistry
+
+  Note over Auditor,VR: Lecturas view sin gas (cualquier address, incluso 0 ETH)
+  Auditor->>RPC: eth_call getParticipationStats(electionId)
+  RPC->>AV: getParticipationStats
+  AV->>VR: getParticipationStats
+  VR-->>AV: (totalVotes, blankVotes, nullVotes)
+  AV-->>RPC: stats
+  RPC-->>Auditor: datos (sin firma / sin gasto de gas)
+
+  Auditor->>RPC: eth_call verifyReceipt(receiptHash)
+  RPC->>AV: verifyReceipt
+  AV->>VR: verifyReceipt (ancla nullifier/voterHash)
+  VR-->>AV: true | false
+  AV-->>RPC: incluido?
+  RPC-->>Auditor: confirmación de participación (sin identidad)
+
+  Auditor->>RPC: eth_call getVotesByCandidate(electionId, unknownId)
+  RPC->>AV: getVotesByCandidate
+  AV->>VR: getVotesByCandidate
+  VR-->>AV: 0
+  Note over Auditor,VR: Id inexistente → 0 (no revert)
+
+  Note over VR,AV: UAT-04 — pause solo bloquea recordVote
+  VR->>VR: pause() (PAUSER_ROLE)
+  Auditor->>RPC: eth_call getElectionState(electionId)
+  RPC->>AV: getElectionState
+  AV->>MRS: getElectionState
+  MRS-->>AV: OPEN | CLOSED | …
+  AV-->>RPC: estado
+  RPC-->>Auditor: lectura OK aunque registry esté pausado
