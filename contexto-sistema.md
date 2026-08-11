@@ -1,7 +1,7 @@
 # VOTAR — Contexto del Sistema para Consulta IA
 
 > Documento de referencia rápida para agentes IA. Sintetiza toda la documentación del proyecto.
-> Última actualización: 2026-06-12 | Equipo: Five Stack | UTN FRVM
+> Última actualización: 2026-08-08 | Equipo: Five Stack | UTN FRVM
 
 ---
 
@@ -92,12 +92,12 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 
 | Contenedor | Tecnología | Descripción |
 |---|---|---|
-| **BUD** (Boleta Única Digital) | React.js / Ethers.js | Frontend de votación y firma criptográfica |
-| **Panel de Administración** | React.js | Gestión institucional del padrón y comicios |
-| **Dashboard Público** | React.js / Ethers.js | Auditoría ciudadana, resultados en tiempo real |
-| **API Backend** | Node.js (Express) / Python (FastAPI) | Motor off-chain: Merkle, reglas electorales, desvinculación de identidad |
+| **BUD** (Boleta Única Digital) | React 19 / TanStack Router / Ethers.js | Frontend de votación y firma criptográfica |
+| **Panel de Administración** | React 19 / TanStack Router | Gestión institucional del padrón y comicios |
+| **Dashboard Público** | React 19 / TanStack Query / Recharts | Auditoría ciudadana: resumen, resultados, participación, re-voto, padrón, estado |
+| **API Backend** | NestJS 11 / TypeORM / PostgreSQL 16 | Motor off-chain: Merkle, reglas electorales, desvinculación de identidad, orquestación Sepolia |
 | **Base de Datos** | PostgreSQL 16 | Persistencia off-chain (configuración, padrón hasheado, audit log). **NO almacena votos ni PII** |
-| **Ecosistema On-Chain** | Solidity ^0.8.24 / OpenZeppelin v5 | Smart contracts de lógica electoral inmutable |
+| **Ecosistema On-Chain** | Solidity ^0.8.24 / OpenZeppelin v5 / Hardhat | Smart contracts de lógica electoral inmutable (Sepolia testnet) |
 
 ### 4.3 Componentes clave del API Backend
 
@@ -118,9 +118,9 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 |---|---|
 | `ElectionFactory.sol` | Despliega conjunto de contratos por comicio. Patrón UUPS Proxy Factory |
 | `BallotContract.sol` | Orquesta `castVote` / `castSignedVote`: Merkle + EIP-712; delega `recordVote` a `VoteRegistry` (VOTAR-346). Rechaza `ElectionClosed` (VOTAR-321). Patrón CEI + `whenNotPaused` |
-| `VoteRegistry.sol` | Estado canónico por `voterHash` (nullifier). `VoteCast` indexado; tallies LAST_WINS; views VOTAR-350 (`getParticipationStats`, `verifyReceipt`) |
+| `VoteRegistry.sol` | Estado canónico por `voterHash` (nullifier). `VoteCast` indexado; tallies LAST_WINS; contador `_totalRevotes`; views VOTAR-350 + VOTAR-329 (`getRevoteStats`) |
 | `TallyContract.sol` | Contadores incrementales por candidato (aspiracional; tallies actuales viven en VoteRegistry) |
-| `AuditViewContract.sol` | Fachada `view` sin gas (VOTAR-350): estado, participación, votos por candidato, verificación de recibo anónimo |
+| `AuditViewContract.sol` | Fachada `view` sin gas (VOTAR-350/329): estado, participación, votos por candidato, verificación de recibo anónimo, **estadísticas de re-voto** (`getRevoteStats → totalRevotes, uniqueVoters, overwriteRatio`) |
 | `MerkleRootStore.sol` | Almacena y versiona Merkle Roots publicadas por la autoridad |
 | OZ: `MerkleProof.sol` | Verifica pertenencia al árbol (OpenZeppelin v5) |
 | OZ: `ECDSA.sol` | Recupera firmante del payload del voto (Ley 25.506) |
@@ -228,14 +228,15 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 
 | Capa | Tecnología |
 |---|---|
-| Frontend | React.js, Ethers.js, Web Crypto API, Chart.js, PapaParse |
-| Backend | Node.js / Express **o** Python / FastAPI, Prisma / SQLAlchemy, merkletreejs / py-merkle, Winston / structlog |
+| Frontend | React 19, TanStack Router, TanStack Query, Ethers.js, Web Crypto API, Recharts, PapaParse, Vitest |
+| Backend | NestJS 11, TypeORM, PostgreSQL 16, ethers v6, merkletreejs, Jest |
 | Base de datos | PostgreSQL 16 |
-| Smart contracts | Solidity ^0.8.24, OpenZeppelin v5, Hardhat / Ganache (dev local) |
+| Smart contracts | Solidity ^0.8.24, OpenZeppelin v5, Hardhat, Slither (CI) |
 | Blockchain | Ethereum Sepolia Testnet (dev/academia), Mainnet (fuera de alcance) |
 | Nodo RPC | Infura / Alchemy (free tier) |
-| Autenticación | OAuth 2.0 / OpenID Connect |
-| Criptografía | ECC (billetera efímera), keccak-256 (hashes), ECDSA (firma voto), Merkle Tree |
+| Autenticación | OAuth 2.0 / OpenID Connect (JWKS RS256 — VOTAR-314) |
+| Criptografía | ECC (billetera efímera), keccak-256 (hashes), ECDSA/EIP-712 (firma voto), Merkle Tree |
+| CI/CD | GitHub Actions en repos `blockchain`, `back`, `front` (lint, test, Slither) |
 
 ---
 
@@ -326,3 +327,50 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
+- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-4/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
+
+---
+
+## 18. Repositorios y Estado Actual (2026-08-08)
+
+| Repo | Stack | Rama principal de desarrollo | CI |
+|---|---|---|---|
+| `PFISI-Votar/blockchain` | Hardhat / Solidity | `dev` | test + Slither |
+| `PFISI-Votar/back` | NestJS / TypeORM | `dev` | lint + test + e2e |
+| `PFISI-Votar/front` | React / Vite | `dev` | Prettier + ESLint + Vitest |
+| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-4/votar.c4`) |
+
+### Dashboard Público — secciones implementadas
+
+| Ruta | Ticket | Fuente de datos |
+|---|---|---|
+| `/dashboard` | Resumen | Metadatos off-chain + estado comicio |
+| `/dashboard/resultados` | VOTAR-364 | `AuditViewContract.getVotesByCandidate` + escrutinio |
+| `/dashboard/participacion` | VOTAR-365 | `getParticipationStats` + eventos `VoteCast` |
+| `/dashboard/revoto` | **VOTAR-329** (en PR) | `getRevoteStats` + curva acumulativa de sobreescritura |
+| `/dashboard/padron` | VOTAR-333 | Total habilitados (público) |
+| `/dashboard/oferta` | VOTAR-318 | Oferta electoral publicada |
+| `/dashboard/estado` | **VOTAR-367** (en PR) | `getElectionState` + `getMerkleRoot` + direcciones + límites re-voto |
+
+### API pública del dashboard (sin autenticación)
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /elecciones/:id/resultados` | Escrutinio agregado (VOTAR-364) |
+| `GET /elecciones/:id/participacion-publica` | Métricas de afluencia (VOTAR-365) |
+| `GET /elecciones/:id/revoto-stats-publica` | Estadísticas de re-voto (VOTAR-329) |
+| `GET /elecciones/:id/contrato-estado-publica` | Metadatos técnicos del contrato (VOTAR-367) |
+
+### Funcionalidades recientes entregadas / en PR
+
+| Ticket | Estado | Descripción |
+|---|---|---|
+| VOTAR-367 | PR abierta (#67 back, #81 front) | Ficha técnica del smart contract en dashboard (/estado) |
+| VOTAR-329 | PR abierta (#36 blockchain, #66 back, #80 front) | Estadísticas agregadas de re-voto en dashboard |
+| VOTAR-344 | Mergeado en dev (blockchain) | Re-voto con corrección atómica de contadores |
+| VOTAR-350 | Mergeado | Views de auditoría pública (`AuditViewContract`) |
+| VOTAR-365 | Mergeado | Dashboard de participación pública |
+| VOTAR-364 | Mergeado | Escrutinio público on-chain |
+| VOTAR-360 | Mergeado | Recibo criptográfico de participación |
+| VOTAR-341 | Mergeado | Unicidad sin re-voto (`RevoteDisabled`) |
+| VOTAR-384 | Mergeado | Pipeline CI/CD en los tres repos |

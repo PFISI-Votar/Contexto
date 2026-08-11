@@ -109,6 +109,7 @@ codigo/
     ├── sprint-1/  # DER, clases y votar.c4 del Sprint 1
     ├── sprint-2/  # DER, clases y votar.c4 del Sprint 2 (VOTAR-334 Merkle)
     └── sprint-3/  # DER, clases, C4 y secuencias del Sprint 3 (VOTAR-346/350 auditoría on-chain)
+    └── sprint-4/  # DER, clases, C4 y secuencias del Sprint 4 (VOTAR-329 revoto stats, dashboard ampliado, stack NestJS/React 19)
 ```
 
 ---
