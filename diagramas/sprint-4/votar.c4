@@ -172,11 +172,11 @@ model {
 
       statsViewer = component "Visualizador de Resultados" {
         technology "React / Recharts"
-        description "Secciones públicas: resumen, escrutinio (VOTAR-364), participación (VOTAR-365), re-voto (VOTAR-329), padrón, oferta y estado. Polling periódico cuando el comicio está abierto"
+        description "Secciones públicas: resumen, escrutinio (VOTAR-364), participación (VOTAR-365), re-voto (VOTAR-329), transacciones (VOTAR-373), padrón, oferta y estado. Polling periódico cuando el comicio está abierto"
       }
-      blockScanner = component "Escáner Blockchain" {
-        technology "Ethers.js"
-        description "Monitorea directamente los logs y eventos emitidos por los Smart Contracts"
+      transaccionesViewer = component "Historial de Transacciones" {
+        technology "React / TanStack Query"
+        description "VOTAR-373: solapa /dashboard/transacciones — GET transacciones-publica (PostgreSQL). Sin eth_getLogs ni RPC directo desde el navegador"
       }
       localVerifier = component "Verificador de Voto" {
         technology "React / Merkle-Lib"
@@ -244,7 +244,11 @@ model {
       }
       votoModule = component "Módulo Voto (NestJS)" {
         technology "NestJS 11 / TypeORM"
-        description "GET /elecciones/:idEleccion/boleta-digital y GET .../merkle-proof (VOTAR-354). VOTAR-379: sin POST votos/confirmar ni tabla puente identidad↔voto; sufragio solo on-chain. VOTAR-321: si el comicio está CERRADA/ESCRUTADA responde HTTP 410 Gone; configuracion-bud expone resultadosDefinitivos/snapshotCongelado"
+        description "GET /elecciones/:idEleccion/boleta-digital y GET .../merkle-proof (VOTAR-354). VOTAR-379: sin POST votos/confirmar ni tabla puente identidad↔voto; sufragio solo on-chain. VOTAR-373: POST .../votos/transaccion-publica (txHash anónimo, credentials omit). VOTAR-321: si el comicio está CERRADA/ESCRUTADA responde HTTP 410 Gone"
+      }
+      transaccionBlockchainIndexer = component "Indexador de Transacciones (VOTAR-373)" {
+        technology "NestJS Service / TypeORM"
+        description "Append-only en transaccion_blockchain. Escritura: ops admin post-tx + POST transaccion-publica (1× getTransactionReceipt). Lectura: GET transacciones-publica sin eth_getLogs"
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
@@ -272,6 +276,10 @@ model {
       auditLogSchema = component "Esquema de Audit Log" {
         technology "PostgreSQL Schema (append-only)"
         description "Bitácora inmutable. VOTAR-379: VOTO_EMITIDO sin IP/UA/session/votanteHash; ip_origen nullable"
+      }
+      transaccionBlockchainSchema = component "Esquema Transacciones On-Chain (VOTAR-373)" {
+        technology "PostgreSQL Schema"
+        description "transaccion_blockchain: hash, bloque, evento, descripción pública. Sin FK a votante/nullifier"
       }
     }
 
@@ -454,6 +462,11 @@ model {
   votar.api.dataAccess -> votar.db.candidateSchema "Lee/escribe categorías, listas y candidatos" { technology "TCP/IP" }
   votar.api.dataAccess -> votar.db.voterSchema "Lee/escribe hashes de padrón" { technology "TCP/IP" }
   votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora (VOTO_EMITIDO anónimo — VOTAR-379)" { technology "TCP/IP" }
+  votar.api.transaccionBlockchainIndexer -> votar.api.dataAccess "INSERT/SELECT transaccion_blockchain (VOTAR-373)" { technology "TypeORM" }
+  votar.api.dataAccess -> votar.db.transaccionBlockchainSchema "Índice append-only de txs públicas" { technology "TCP/IP" }
+  votar.api.transaccionBlockchainIndexer -> rpc "getTransactionReceipt puntual al indexar voto (1 RPC, no scan)" { technology "JSON-RPC/HTTPS" }
+  votar.api.lifecycleManager -> votar.api.transaccionBlockchainIndexer "Indexa txs admin (deploy, estado, ventana, candidatos)"
+  votar.api.merklePublisherService -> votar.api.transaccionBlockchainIndexer "Indexa RootPublished tras publicar padrón"
 
   // Panel Admin -> Blockchain (publicación de raíz)
   votar.panel.rootPublisher -> votar.api.merklePublisherService "POST /padron/merkle/publicar" { technology "HTTPS / JSON" }
@@ -462,8 +475,9 @@ model {
 
   // Frontends -> Blockchain (Web3)
   votar.bud.blockchainClient -> rpc "Envía castSignedVote (payload + proof + firma); transmitter paga gas" { technology "JSON-RPC/HTTPS" }
-  votar.dashboard.blockScanner -> rpc "Consulta logs, eventos y estado del contrato" { technology "JSON-RPC/HTTPS" }
-  votar.dashboard.localVerifier -> votar.dashboard.blockScanner "Valida prueba contra raíz on-chain"
+  votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/transaccion-publica { txHash } fire-and-forget (credentials omit — VOTAR-373)" { technology "HTTPS / JSON" }
+  votar.dashboard.transaccionesViewer -> votar.api.apiRouter "GET /transacciones-publica (polling 30s, sin RPC directo)" { technology "HTTPS / JSON" }
+  votar.dashboard.localVerifier -> rpc "Verificación puntual por txHash (VOTAR-360)" { technology "JSON-RPC/HTTPS" }
 
   // RPC -> Smart Contracts
   rpc -> votar.contracts.electionFactory "Proxy para createElection() (DEFAULT_ADMIN_ROLE)"
@@ -612,5 +626,123 @@ views {
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "13. Registra/sobrescribe voto por nullifier (último voto cuenta)"
     votar.contracts.ballotContract -> votar.contracts.tallyContract "14. Actualiza contadores por delta"
     votar.contracts.ballotContract -> ethereum "15. Emite SignedVoteCast(electionId, voterLeaf, nullifier, selectionHash, signer)"
+    votar.bud.blockchainClient -> votar.api.apiRouter "16. POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373, sin cookies SSO)"
+    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "17. Indexa receipt (1× getTransactionReceipt, append-only)"
+  }
+
+  dynamic view auditoria_publica_flow {
+    title "Auditoría pública view sin gas (VOTAR-350)"
+    description "Consultas eth_call directas a AuditViewContract; lecturas disponibles aunque VoteRegistry esté pausado (UAT-04)."
+
+    auditor -> rpc "1. eth_call getParticipationStats(electionId)"
+    rpc -> votar.contracts.auditViewContract "2. view sin gas"
+    votar.contracts.auditViewContract -> votar.contracts.voteRegistry "3. getParticipationStats → (totalVotes, blank, null)"
+    rpc -> auditor "4. stats agregados (sin gasto de gas)"
+
+    auditor -> rpc "5. eth_call verifyReceipt(receiptHash=nullifier)"
+    rpc -> votar.contracts.auditViewContract "6. verifyReceipt"
+    votar.contracts.auditViewContract -> votar.contracts.voteRegistry "7. confirma ancla anónima (sin identidad)"
+    rpc -> auditor "8. true | false"
+
+    auditor -> rpc "9. eth_call getVotesByCandidate(unknownId)"
+    rpc -> votar.contracts.auditViewContract "10. getVotesByCandidate"
+    votar.contracts.auditViewContract -> votar.contracts.voteRegistry "11. id inexistente → 0 (no revert)"
+    rpc -> auditor "12. tally determinístico"
+
+    auditor -> rpc "13. eth_call getElectionState (registry pausado — UAT-04)"
+    rpc -> votar.contracts.auditViewContract "14. getElectionState"
+    votar.contracts.auditViewContract -> votar.contracts.merkleRootStore "15. OPEN | CLOSED | …"
+    rpc -> auditor "16. lectura OK aunque recordVote esté bloqueado"
+  }
+
+  dynamic view cierre_comicio_flow {
+    title "Cierre del comicio y protección post-cierre (VOTAR-321)"
+    description "Cierre manual/automático, sincronización CLOSED on-chain, HTTP 410 Gone y revert ElectionClosed."
+
+    autoridad -> votar.panel.adminAuth "1. Cerrar comicio (estado ABIERTA)"
+    votar.panel.adminAuth -> votar.api.apiRouter "2. POST /elecciones/:id/cerrar"
+    votar.api.apiRouter -> votar.api.lifecycleManager "3. cerrarManual(actorId)"
+    votar.api.lifecycleManager -> rpc "4. setElectionState(electionId, CLOSED)"
+    rpc -> votar.contracts.merkleRootStore "5. ElectionStateChanged(CLOSED)"
+    votar.api.lifecycleManager -> votar.api.dataAccess "6. estado=CERRADA; congelar snapshot dashboard"
+    votar.api.lifecycleManager -> votar.api.auditLogger "7. COMICIO_CERRADO"
+    votar.api.lifecycleManager -> votar.dashboard.statsViewer "8. WebSocket eleccion:cerrada"
+
+    votante -> votar.bud.selection "9. GET boleta-digital post-cierre"
+    votar.bud.selection -> votar.api.apiRouter "10. consulta BUD"
+    votar.api.apiRouter -> votar.bud.selection "11. HTTP 410 Gone (VOTAR-321)"
+    votar.bud.blockchainClient -> rpc "12. castSignedVote (bypass UI)"
+    rpc -> votar.contracts.ballotContract "13. _assertElectionAcceptingVotes"
+    votar.contracts.ballotContract -> votar.bud.blockchainClient "14. revert ElectionClosed"
+
+    votar.api.apiRouter -> votar.api.lifecycleManager "15. CierreAutomaticoScheduler → cerrarAutomatico(SYSTEM)"
+    votar.api.lifecycleManager -> rpc "16. setElectionState(CLOSED) autónomo"
+    rpc -> votar.contracts.merkleRootStore "17. BallotContract ya rechaza si block.timestamp ≥ endTime"
+  }
+
+  dynamic view estado_contrato_flow {
+    title "Ficha técnica del contrato en Dashboard (VOTAR-367)"
+    description "Metadatos criptográficos públicos: direcciones, estado on-chain, Merkle y límites de re-voto."
+
+    auditor -> votar.dashboard.statsViewer "1. Abre /dashboard/estado (sin auth)"
+    votar.dashboard.statsViewer -> votar.api.apiRouter "2. GET /elecciones/:id/contrato-estado-publica"
+    votar.api.apiRouter -> rpc "3. eth_call getElection + getElectionState + getMerkleRoot"
+    rpc -> votar.contracts.electionFactory "4. resolve ballot / voteRegistry / auditView"
+    rpc -> votar.contracts.auditViewContract "5. views sin gas"
+    votar.contracts.auditViewContract -> votar.contracts.merkleRootStore "6. estado + raíz Merkle + revoteConfig"
+    rpc -> votar.api.apiRouter "7. metadatos on-chain + explorerUrl"
+    votar.api.apiRouter -> votar.dashboard.statsViewer "8. ContratoEstadoPublicaResponseDto"
+    votar.dashboard.statsViewer -> auditor "9. Ficha Etherscan; UAT-02 compara Merkle offline"
+  }
+
+  dynamic view revoto_stats_flow {
+    title "Estadísticas de re-voto en Dashboard (VOTAR-329)"
+    description "Métricas agregadas de sobreescritura vía getRevoteStats; polling ~4s con comicio abierto."
+
+    auditor -> votar.dashboard.statsViewer "1. Abre /dashboard/revoto (sin auth)"
+    votar.dashboard.statsViewer -> votar.api.apiRouter "2. GET /elecciones/:id/revoto-stats-publica"
+    votar.api.apiRouter -> rpc "3. eth_call getRevoteStats"
+    rpc -> votar.contracts.auditViewContract "4. view sin gas"
+    votar.contracts.auditViewContract -> votar.contracts.voteRegistry "5. (totalRevotes, uniqueVoters, overwriteRatio WAD)"
+    votar.api.apiRouter -> votar.dashboard.statsViewer "6. serie temporal acumulativa + tarjetas"
+    votar.dashboard.statsViewer -> auditor "7. gráfico Recharts; UAT-02 refleja re-votos en < 5s"
+  }
+
+  dynamic view transacciones_flow {
+    title "Trazabilidad on-chain auditable (VOTAR-373)"
+    description "Índice append-only en PostgreSQL; sin eth_getLogs en lectura del dashboard (fix Alchemy Free tier)."
+
+    votante -> votar.bud.blockchainClient "A1. Confirma sufragio firmado"
+    votar.bud.blockchainClient -> rpc "A2. castSignedVote → SignedVoteCast (txHash)"
+    votar.bud.blockchainClient -> votar.api.apiRouter "A3. POST /votos/transaccion-publica { txHash } (credentials: omit)"
+    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "A4. registrarVotoPublico(id, txHash)"
+    votar.api.transaccionBlockchainIndexer -> rpc "A5. eth_getTransactionReceipt (1 RPC, no scan)"
+    votar.api.transaccionBlockchainIndexer -> votar.api.dataAccess "A6. INSERT idempotente (sin nullifier/voterHash)"
+    votar.api.dataAccess -> votar.db.transaccionBlockchainSchema "A7. transaccion_blockchain append-only"
+
+    auditor -> votar.dashboard.transaccionesViewer "B1. Abre /dashboard/transacciones"
+    votar.dashboard.transaccionesViewer -> votar.api.apiRouter "B2. GET /transacciones-publica"
+    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "B3. listarPorEleccion(id)"
+    votar.api.transaccionBlockchainIndexer -> votar.api.dataAccess "B4. SELECT ORDER BY numero_bloque"
+    votar.api.dataAccess -> votar.dashboard.transaccionesViewer "B5. filas + explorerUrl"
+    votar.dashboard.transaccionesViewer -> auditor "B6. tabla cronológica; UAT-02 verifica en Etherscan"
+  }
+
+  dynamic view escrutinio_tiempo_real_flow {
+    title "Visualización dinámica de resultados (VOTAR-364)"
+    description "Escrutinio público con cache, poller 4s y push WebSocket mientras el comicio está abierto."
+
+    auditor -> votar.dashboard.statsViewer "1. Abre /dashboard/resultados"
+    votar.dashboard.statsViewer -> votar.api.apiRouter "2. GET /elecciones/:id/resultados"
+    votar.api.apiRouter -> rpc "3. resolveAuditView + getParticipationStats + getVotesByCandidate"
+    rpc -> votar.contracts.auditViewContract "4. views sin gas"
+    votar.contracts.auditViewContract -> votar.contracts.voteRegistry "5. tallies on-chain"
+    rpc -> votar.api.apiRouter "6. EscrutinioResponseDto (cache max-age 3s)"
+    votar.api.apiRouter -> votar.dashboard.statsViewer "7. render Recharts + subscribe WS"
+
+    votante -> rpc "8. castSignedVote → VoteCast"
+    rpc -> votar.contracts.ballotContract "9. recordVote"
+    votar.contracts.ballotContract -> votar.contracts.voteRegistry "10. actualiza tallies"
+    votar.api.apiRouter -> votar.dashboard.statsViewer "11. poller detecta delta → resultados:actualizados (≤5s UAT-01)"
   }
 }

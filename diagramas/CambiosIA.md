@@ -4,6 +4,38 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-11] — Sprint 4 — Secuencias dinámicas LikeC4 en votar.c4
+
+- **Tipo de cambio**: C4 (`votar.c4`) + CambiosIA
+- **Motivo**:
+  - Publicar en LikeC4 (`c4.votar.net.ar`) las secuencias del Sprint 4 como `dynamic view` navegables con `?dynamic=sequence`
+  - Alinear flujos `.mmd` con elementos C4 existentes (sin duplicar participantes Mermaid)
+- **Cambios específicos**:
+  1. `sufragio_flow`: pasos 16–17 indexación post-voto VOTAR-373
+  2. Nuevas vistas: `auditoria_publica_flow` (350), `cierre_comicio_flow` (321), `estado_contrato_flow` (367), `revoto_stats_flow` (329), `transacciones_flow` (373), `escrutinio_tiempo_real_flow` (364)
+  3. URLs interactivas: `https://c4.votar.net.ar/view/<view_id>/?dynamic=sequence`
+- **User Stories relacionadas**: VOTAR-350, VOTAR-321, VOTAR-364, VOTAR-367, VOTAR-329, VOTAR-373
+- **Archivos**: `diagramas/sprint-4/votar.c4`, `diagramas/CambiosIA.md`
+
+---
+
+## [2026-08-09] — Sprint 4 — VOTAR-373 trazabilidad on-chain (C4 + secuencia)
+
+- **Tipo de cambio**: C4 + secuencia Mermaid
+- **Motivo**:
+  - Documentar índice append-only `transaccion_blockchain` (patrón VOTAR-433)
+  - Corregir desalineación C4: blockScanner en front escaneaba RPC; la lectura pública usa PostgreSQL
+  - Fix error Alchemy Free tier: `eth_getLogs` con rango `[0, latest]` inviable (~300 req/usuario)
+- **Cambios específicos**:
+  1. C4: `transaccionesViewer` (front) + `transaccionBlockchainIndexer` (back); eliminado scan RPC desde dashboard
+  2. Nueva secuencia `secuencia-transacciones-votar-373.mmd` (POST transaccion-publica + GET transacciones-publica)
+  3. Vista dinámica `transacciones_flow` en LikeC4 (ver entrada 2026-08-11)
+- **User Stories relacionadas**: VOTAR-373 (Sprint 4)
+- **PRs**: Contexto (esta PR), back #68, front #82
+- **Archivos**: `diagramas/sprint-4/votar.c4`, `diagramas/sprint-4/secuencia-transacciones-votar-373.mmd`
+
+---
+
 ## [2026-08-08] — Sprint 4 — VOTAR-367 visualización del estado del contrato
 
 - **Tipo de cambio**: Secuencia + clases + contexto-sistema
