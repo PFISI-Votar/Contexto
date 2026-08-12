@@ -4,6 +4,24 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-11] — Sprint 5 — VOTAR-322 archivado lógico de comicios finalizados
+
+- **Tipo de cambio**: Nueva carpeta `diagramas/sprint-5/` (norma: no editar in-place Sprint 4) + DER + Diagrama de clases
+- **Motivo**:
+  - US: Como Autoridad Electoral quiero archivar comicios en estado CERRADA para removerlos del panel de gestión activa, preservando el acceso público a la evidencia digital on-chain
+  - Nuevo estado `ARCHIVADA` en `ELECCION.estado` (transición CERRADA → ARCHIVADA)
+  - Operación estrictamente relacional: prohibido enviar transacciones a Sepolia; el Smart Contract permanece inmutable en `CLOSED`
+  - Nuevo evento de auditoría `COMICIO_ARCHIVADO` en `AUDIT_LOG.tipo_evento`
+- **Cambios específicos**:
+  1. DER: `ELECCION.estado` → agrega `ARCHIVADA` a la lista de valores
+  2. DER: `AUDIT_LOG.tipo_evento` → agrega `COMICIO_ARCHIVADO`
+  3. Diagrama de clases: enum `EleccionEstado` → agrega valor `ARCHIVADA`
+  4. `votar.c4` y diagramas de secuencia se copian sin cambios de contenido (VOTAR-322 no introduce nuevos flujos ni componentes; reutiliza `lifecycleManager -> dataAccess` sin invocar la capa blockchain)
+- **User Stories relacionadas**: VOTAR-322 (archivado de comicios finalizados)
+- **Archivos**: `diagramas/sprint-5/Diagrama Entidad Relación - Sprint 5 - PFISI.mmd`, `diagramas/sprint-5/Diagrama de clases - Sprint 5 - PFISI.mmd`
+
+---
+
 ## [2026-08-11] — Sprint 4 — Secuencias dinámicas LikeC4 en votar.c4
 
 - **Tipo de cambio**: C4 (`votar.c4`) + CambiosIA
