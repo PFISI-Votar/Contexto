@@ -84,8 +84,14 @@ model {
   
   rpc = externalSystem "Proveedor de Nodos RPC" {
     #web3
-    technology "Infura / Alchemy"
-    description "Gateway HTTP/WebSocket para interactuar con la cadena de bloques"
+    technology "Infura / Alchemy / QuickNode (failover VOTAR-386)"
+    description "Gateway HTTP/WebSocket con rotación automática ante 429, timeout o caída. Verifica skew de bloque entre proveedores"
+  }
+
+  rpcBackup = externalSystem "Nodo RPC de Respaldo" {
+    #web3
+    technology "Alchemy / QuickNode / Infura (rotación)"
+    description "VOTAR-386: proveedor secundario activado en <1s cuando el principal falla o agota free tier"
   }
   
   ethereum = externalSystem "Red Ethereum" {
@@ -119,8 +125,16 @@ model {
         description "Consulta la boleta digital del comicio y confirma el voto con clave idempotente. Envía solo hashes de recepción al backend; no persiste selección en claro"
       }
       cryptoEngine = component "Generador Criptográfico" {
-        technology "Web Crypto API"
-        description "Genera claves efímeras ECC, firma sufragios y calcula nulificadores en el cliente"
+        technology "Web Crypto API / @noble/secp256k1"
+        description "VOTAR-452: semilla aleatoria por (idEleccion, JWT sub) en localStorage → billetera efímera determinística (mismo nullifier en revoto LAST_WINS). Firma EIP-712; clave privada nunca persiste"
+      }
+      cooldownClock = component "Reloj de Cooldown Anclado" {
+        technology "React / localStorage (VOTAR-449/452)"
+        description "Persiste CooldownAnchor (unlockAtNodeSeconds) por votanteScope. Extrapola block.timestamp + wall-clock; sobrevive cierre de pestaña; no reinicia countdown espurio"
+      }
+      pendingCastRecovery = component "Recuperación de Cast Pendiente" {
+        technology "sessionStorage (VOTAR-445)"
+        description "Reanuda waitForTransactionReceipt tras F5/tab reload; reconcilia consumo con registrarConsumo(votosObjetivo) idempotente (VOTAR-451)"
       }
       proofRequester = component "Manejador de Pruebas" {
         technology "Fetch API"
@@ -164,6 +178,14 @@ model {
         technology "React / TanStack Query"
         description "US-335: botón «Publicar Raíz on-chain» en panel de padrón; invoca POST /padron/merkle/publicar y muestra tx hash + enlace Etherscan"
       }
+      documentosComicio = component "Menú Documentos del Comicio" {
+        technology "React / jsPDF (client-side)"
+        description "VOTAR-374/375: descarga Acta de Apertura y Acta de Cierre (PDF generado en navegador). VOTAR-322: pestaña Históricos para comicios ARCHIVADA"
+      }
+      pausaComicioPanel = component "Control de Pausa de Emergencia" {
+        technology "React / n-of-m confirmación"
+        description "VOTAR-347/348: solicitar/confirmar pausa y reanudación. Bloquea BUD mientras pausada=true"
+      }
     }
     
     dashboard = frontend "Dashboard Público" {
@@ -177,6 +199,10 @@ model {
       transaccionesViewer = component "Historial de Transacciones" {
         technology "React / TanStack Query"
         description "VOTAR-373: solapa /dashboard/transacciones — GET transacciones-publica (PostgreSQL). Sin eth_getLogs ni RPC directo desde el navegador"
+      }
+      participacionExporter = component "Exportador PNG Participación" {
+        technology "html-to-image / Recharts (VOTAR-376)"
+        description "Botón «Exportar PNG» en /dashboard/participacion — captura la curva de afluencia sin round-trip al servidor"
       }
       localVerifier = component "Verificador de Voto" {
         technology "React / Merkle-Lib"
@@ -203,8 +229,32 @@ model {
         description "Valida reglas de negocio antes de oficializar: mínimo de candidatos, voto en blanco habilitado, ventanas temporales, bajas/sucesiones bloqueadas tras inicio, y política de voto múltiple (revoteEnabled, maxVotesPerVoter ≥1, minIntervalSeconds ≥0, coherencia con ventana del comicio)"
       }
       revotePolicyService = component "Servicio de Política de Re-voto" {
-        technology "Node.js Service"
-        description "Materializa la política configurada por la autoridad: persiste {revoteEnabled, maxVotesPerVoter, minIntervalSeconds, tallyPolicy=LAST_WINS}, sincroniza parámetros con el deployment del BallotContract vía ElectionFactory y expone consulta al BUD para UI/feedback (intentos restantes, próximo reintento)"
+        technology "Node.js Service / TypeORM"
+        description "VOTAR-328/451/452: persiste registro_intento_sufragio; registrarConsumo con lock pessimista + votosObjetivo idempotente; gate cooldown off-chain (HTTP 429). claveIntento = hash opaco JWT sub"
+      }
+      archivarComicioService = component "Archivado de Comicios (VOTAR-322)" {
+        technology "NestJS Service"
+        description "POST /archivar: CERRADA → ARCHIVADA solo en PostgreSQL. Prohibido escribir en Sepolia. Endpoints públicos del dashboard intactos"
+      }
+      pausaComicioService = component "Pausa/Reanudación de Emergencia (VOTAR-347)" {
+        technology "NestJS / BlockchainService"
+        description "n-of-m PAUSER_ROLE: pause(reason)/unpause() en BallotContract + VoteRegistry; persiste eleccion.pausada. AuditView sigue legible"
+      }
+      actaAperturaService = component "Compilador Acta de Apertura (VOTAR-374)" {
+        technology "NestJS Service"
+        description "GET /acta-apertura: agrega padrón, oferta, verificación criptográfica + toggles CONFIGURACION_SISTEMA. PDF renderizado client-side"
+      }
+      actaCierreService = component "Compilador Acta de Cierre (VOTAR-375)" {
+        technology "NestJS Service"
+        description "GET /acta-cierre: escrutinio final + participación + verificación on-chain. PDF client-side con plantilla configurable"
+      }
+      rpcFailover = component "Cliente RPC con Failover (VOTAR-386)" {
+        technology "ethers v6 / viem FallbackProvider"
+        description "Rotación Infura→Alchemy→QuickNode ante 429, timeout >15s o error de red. Log de failover + verificación skew de bloque"
+      }
+      faucetService = component "Faucet Sepolia (VOTAR-387)" {
+        technology "NestJS cron / ethers Wallet"
+        description "checkAndTopUpWallets: recarga TEST_WALLET_ADDRESSES desde FAUCET_MASTER si balance < 0.1 SepoliaETH. Alerta mail si fondos insuficientes"
       }
       lifecycleManager = component "Gestor de Ciclo de Vida Electoral" {
         technology "Node.js Service"
@@ -475,7 +525,23 @@ model {
 
   // Frontends -> Blockchain (Web3)
   votar.bud.blockchainClient -> rpc "Envía castSignedVote (payload + proof + firma); transmitter paga gas" { technology "JSON-RPC/HTTPS" }
-  votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/transaccion-publica { txHash } fire-and-forget (credentials omit — VOTAR-373)" { technology "HTTPS / JSON" }
+  votar.bud.cryptoEngine -> votar.bud.cooldownClock "Ancla unlockAt tras cast on-chain (VOTAR-449/452)"
+  votar.bud.cooldownClock -> votar.bud.blockchainClient "Bloquea reintento mientras remaining > 0"
+  votar.bud.pendingCastRecovery -> votar.bud.blockchainClient "Reanuda receipt wait post-F5 (VOTAR-445)"
+  votar.panel.documentosComicio -> votar.api.apiRouter "GET acta-apertura / acta-cierre (VOTAR-374/375)" { technology "JSON/HTTPS" }
+  votar.panel.pausaComicioPanel -> votar.api.apiRouter "POST pausar / reanudar (VOTAR-347)" { technology "JSON/HTTPS" }
+  votar.panel.adminAuth -> votar.api.apiRouter "POST /archivar (VOTAR-322)" { technology "JSON/HTTPS" }
+  votar.dashboard.participacionExporter -> votar.dashboard.statsViewer "Captura canvas Recharts → PNG local (VOTAR-376)"
+  votar.api.rpcFailover -> rpc "Proveedor RPC primario" { technology "JSON-RPC/HTTPS" }
+  votar.api.rpcFailover -> rpcBackup "Failover automático (VOTAR-386)" { technology "JSON-RPC/HTTPS" }
+  votar.api.merklePublisherService -> votar.api.rpcFailover "publishRoot y ops admin Sepolia"
+  votar.api.archivarComicioService -> votar.api.dataAccess "UPDATE estado=ARCHIVADA (sin RPC)"
+  votar.api.pausaComicioService -> votar.api.rpcFailover "pause()/unpause() Ballot + Registry"
+  votar.api.actaAperturaService -> votar.api.dataAccess "Lee padrón, oferta, configuracion_sistema"
+  votar.api.faucetService -> votar.api.rpcFailover "Transfer SepoliaETH a TEST_WALLET_ADDRESSES (VOTAR-387)"
+  votar.api.revotePolicyService -> votar.api.dataAccess "UPSERT registro_intento_sufragio (VOTAR-451/452)"
+  votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/registrar-consumo { votosObjetivo }" { technology "JSON/HTTPS" }
+  votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373)" { technology "HTTPS / JSON" }
   votar.dashboard.transaccionesViewer -> votar.api.apiRouter "GET /transacciones-publica (polling 30s, sin RPC directo)" { technology "HTTPS / JSON" }
   votar.dashboard.localVerifier -> rpc "Verificación puntual por txHash (VOTAR-360)" { technology "JSON-RPC/HTTPS" }
 
@@ -744,5 +810,71 @@ views {
     rpc -> votar.contracts.ballotContract "9. recordVote"
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "10. actualiza tallies"
     votar.api.apiRouter -> votar.dashboard.statsViewer "11. poller detecta delta → resultados:actualizados (≤5s UAT-01)"
+  }
+
+  dynamic view archivar_comicio_flow {
+    title "Archivado lógico off-chain (VOTAR-322)"
+    description "CERRADA → ARCHIVADA en PostgreSQL. Cero gas; dashboard público intacto."
+
+    autoridad -> votar.panel.adminAuth "1. Archivar comicio CERRADA"
+    votar.panel.adminAuth -> votar.api.apiRouter "2. POST /elecciones/:id/archivar"
+    votar.api.apiRouter -> votar.api.archivarComicioService "3. archivarManual (sin BlockchainService)"
+    votar.api.archivarComicioService -> votar.api.dataAccess "4. UPDATE estado=ARCHIVADA"
+    votar.api.archivarComicioService -> votar.api.auditLogger "5. COMICIO_ARCHIVADO"
+    auditor -> votar.dashboard.statsViewer "6. GET resultados (comicio archivado)"
+    votar.dashboard.statsViewer -> rpc "7. eth_call AuditView (sin cambios on-chain)"
+    rpc -> votar.contracts.auditViewContract "8. escrutinio intacto"
+  }
+
+  dynamic view pausa_emergencia_flow {
+    title "Pausa de emergencia del comicio (VOTAR-347/348)"
+    description "whenNotPaused en escritura; views de auditoría disponibles durante pausa."
+
+    autoridad -> votar.panel.pausaComicioPanel "1. Solicitar pausa + reason"
+    votar.panel.pausaComicioPanel -> votar.api.apiRouter "2. POST /pausar (n-of-m confirmación)"
+    votar.api.apiRouter -> votar.api.pausaComicioService "3. confirmarPausa"
+    votar.api.pausaComicioService -> votar.api.rpcFailover "4. pause(reason) Ballot + Registry"
+    votar.api.rpcFailover -> votar.contracts.ballotContract "5. EnforcedPause en castSignedVote"
+    votar.api.pausaComicioService -> votar.api.dataAccess "6. pausada=true"
+    votante -> votar.bud.blockchainClient "7. castSignedVote → revert"
+    auditor -> rpc "8. getParticipationStats (lectura OK — UAT-04)"
+    rpc -> votar.contracts.auditViewContract "9. view sin whenNotPaused"
+  }
+
+  dynamic view intervalo_sufragios_flow {
+    title "Cooldown y consumo idempotente (VOTAR-451/452)"
+    description "Ancla localStorage + registrarConsumo(votosObjetivo) evita doble conteo y reset de countdown."
+
+    votante -> votar.bud.cryptoEngine "1. getOrCreateElectionSeed(idEleccion, JWT sub)"
+    votante -> votar.bud.blockchainClient "2. castSignedVote → SignedVoteCast"
+    votar.bud.blockchainClient -> votar.bud.cooldownClock "3. persist CooldownAnchor (localStorage)"
+    votar.bud.blockchainClient -> votar.api.apiRouter "4. POST registrar-consumo { votosObjetivo: N }"
+    votar.api.apiRouter -> votar.api.revotePolicyService "5. lock pessimista + idempotent sync"
+    votar.api.revotePolicyService -> votar.api.dataAccess "6. UPSERT registro_intento_sufragio"
+    votar.bud.cooldownClock -> votante "7. countdown desde unlockAt (no reinicia a minIntervalo)"
+    votante -> votar.bud.blockchainClient "8. 2do cast tras cooldown → LAST_WINS overwrite"
+  }
+
+  dynamic view acta_apertura_flow {
+    title "Acta de Apertura PDF (VOTAR-374)"
+    description "Backend compila datos; frontend renderiza PDF client-side con plantilla configurable."
+
+    autoridad -> votar.panel.documentosComicio "1. Descargar Acta de Apertura"
+    votar.panel.documentosComicio -> votar.api.apiRouter "2. GET /acta-apertura"
+    votar.api.apiRouter -> votar.api.actaAperturaService "3. compilarDatos"
+    votar.api.actaAperturaService -> votar.api.dataAccess "4. padrón + oferta + config_sistema"
+    votar.panel.documentosComicio -> autoridad "5. jsPDF local (sin persistir PDF en BD)"
+  }
+
+  dynamic view rpc_failover_flow {
+    title "Failover RPC multi-proveedor (VOTAR-386)"
+    description "Rotación transparente ante 429, timeout o caída del nodo principal."
+
+    votante -> votar.bud.blockchainClient "1. castSignedVote"
+    votar.bud.blockchainClient -> rpc "2. eth_sendRawTransaction (proveedor A)"
+    rpc -> votar.bud.blockchainClient "3. HTTP 429 Too Many Requests"
+    votar.bud.blockchainClient -> rpcBackup "4. reintento automático proveedor B (<1s)"
+    rpcBackup -> votar.contracts.ballotContract "5. tx confirmada"
+    votar.api.rpcFailover -> votar.api.auditLogger "6. log failover event (UAT-04)"
   }
 }

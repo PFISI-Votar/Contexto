@@ -5,14 +5,12 @@
 %% ============================================================================
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
-%% Evolución Sprint 5 (off-chain, sin interacción con la blockchain):
-%% - VOTAR-322: archivado lógico de comicios CERRADA (estado ARCHIVADA).
-%%   Operación estrictamente relacional — prohibido enviar transacciones a
-%%   Sepolia; el Smart Contract permanece inmutable en CLOSED. Los endpoints
-%%   públicos de solo lectura (dashboard, escrutinio) siguen sirviendo datos
-%%   de comicios archivados sin cambios.
-%% Hereda Sprint 4: VOTAR-329 (getRevoteStats en AuditViewContract)
-%% Hereda Sprint 3: VOTAR-346 / VOTAR-350 (VoteCast + views de auditoría)
+%% Evolución Sprint 5:
+%% - VOTAR-322: estado ARCHIVADA + COMICIO_ARCHIVADO en audit_log (solo off-chain)
+%% - VOTAR-347: columnas pausada / pausada_en en ELECCION
+%% - VOTAR-374/375: CONFIGURACION_SISTEMA (singleton) + snapshot apertura en ELECCION
+%% - VOTAR-328/451/452: REGISTRO_INTENTO_SUFRAGIO (consumo off-chain idempotente)
+%% Hereda Sprint 4: VOTAR-373 (transaccion_blockchain), VOTAR-329, VOTAR-346/350
 %% ============================================================================
 %% NOTA: Los campos 'estado' se implementarán como tipos ENUM de PostgreSQL
 %% para garantizar la integridad de datos y evitar anomalías de inserción.
@@ -30,8 +28,13 @@ erDiagram
         string descripcion "Descripción del proceso electoral"
         datetime fecha_inicio "Fecha y hora de apertura del comicio (UTC, futura)"
         datetime fecha_fin "Fecha y hora de cierre del comicio (UTC, futura > inicio)"
-        string estado "BORRADOR | CONFIGURADA | ABIERTA | CERRADA | ESCRUTADA | ARCHIVADA"
+        string estado "BORRADOR | CONFIGURADA | ABIERTA | CERRADA | ESCRUTADA | ARCHIVADA (VOTAR-322)"
         string tipo_votacion "POR_CANDIDATO | POR_LISTA | MIXTO — modalidad electoral (US-316)"
+        boolean pausada "VOTAR-347: eje ortogonal a estado — urna pausada por incidente"
+        datetime pausada_en "Timestamp de la última pausa de emergencia"
+        datetime apertura_real_en "Snapshot apertura efectiva (VOTAR-374 Acta de Apertura)"
+        string apertura_modo "MANUAL | AUTOMATICO"
+        string apertura_actor_nombre "Responsable humano de la apertura (nullable si automático)"
         int minimo_candidatos_por_lista "Legacy/reservado — no usado por US-319; el mínimo vigente es CATEGORIA.minimo_postulantes"
         datetime fecha_creacion "Timestamp de creación del registro"
         datetime fecha_actualizacion "Timestamp de última modificación"
@@ -263,16 +266,20 @@ erDiagram
     %% Clave de verificación pública = TransactionHash (evento SignedVoteCast).
     %% FirmaDigital = firma ECDSA del sistema sobre payload canónico
     %% (ElectionID|txHash|blockNumber|timestamp), sin persistir el PDF.
-    %% Entidades aspiracionales (no TypeORM en Sprint 2):
+    %% VOTAR-373: índice append-only en PostgreSQL (sin FK a votante/nullifier).
+    %% Poblado en cast admin + POST /votos/transaccion-publica (patrón VOTAR-433).
+    %% Entidad TypeORM desde Sprint 4 (fix Alchemy eth_getLogs):
     %% ═══════════════════════════════════════════════════════════════════════
 
     TRANSACCION_BLOCKCHAIN {
-        string hash_transaccion UK "TransactionHash on-chain (clave de verificación E2E)"
-        int id_eleccion "Elección del evento SignedVoteCast"
+        string hash_transaccion PK "TransactionHash on-chain"
+        int id_eleccion FK "Elección del evento"
         int numero_bloque "Bloque de inclusión"
-        datetime timestamp "Timestamp del bloque"
-        string estado "CONFIRMADA (status=1 + SignedVoteCast)"
-        string direccion_contrato "BallotContract"
+        datetime marca_tiempo "Timestamp del bloque"
+        string contrato_etiqueta "BallotContract | VoteRegistry | MerkleRootStore"
+        string nombre_evento "SignedVoteCast, VoteCast, RootPublished..."
+        string descripcion_legible "Texto público sin nullifier/voterHash"
+        int log_index "Orden estable dentro del bloque"
     }
 
     RECIBO_VOTACION {
@@ -300,6 +307,37 @@ erDiagram
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
+    %% CONFIGURACIÓN GLOBAL DE PLATAFORMA (VOTAR-374 / VOTAR-375)
+    %% Fila singleton id=1: logo institucional + plantillas de actas PDF.
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    CONFIGURACION_SISTEMA {
+        int id PK "Siempre 1 (singleton)"
+        string logo_url "Ruta al logo embebido en actas PDF"
+        jsonb acta_apertura_plantilla "Toggles secciones Acta de Apertura (VOTAR-374)"
+        jsonb acta_cierre_plantilla "Toggles secciones Acta de Cierre (VOTAR-375)"
+        string acta_apertura_modo "SIMPLE | PERSONALIZADO"
+        text acta_apertura_plantilla_texto "Cuerpo personalizado (modo PERSONALIZADO)"
+        datetime fecha_actualizacion "Última modificación de plantillas"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% MOTOR OFF-CHAIN DE INTENTOS (VOTAR-328 / VOTAR-451 / VOTAR-452)
+    %% clave_intento = ancla opaca de sesión (hash JWT sub); sin FK a VOTANTE.
+    %% votosObjetivo sync idempotente con getVoterState on-chain.
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    REGISTRO_INTENTO_SUFRAGIO {
+        int id_registro PK "Identificador del registro"
+        int id_eleccion FK "Elección asociada"
+        string clave_intento UK "Ancla opaca por (id_eleccion, clave_intento)"
+        int votos_consumidos "Intentos consumidos (≤ max_votos_por_votante)"
+        datetime ultimo_intento_at "Timestamp del último consumo registrado"
+        datetime creado_en "Alta del registro"
+        datetime actualizado_en "Última actualización"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
     %% MOTOR OFF-CHAIN (Registro de Nullifiers para prevenir doble voto)
     %% ═══════════════════════════════════════════════════════════════════════
 
@@ -320,7 +358,7 @@ erDiagram
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO"
         datetime timestamp "Timestamp UTC del evento"
         string actor "Operador ofuscado (SHA-256+salt). ANONIMO para VOTO_EMITIDO — VOTAR-379/370"
         string descripcion "Descripción del evento (sin IP en claro)"
@@ -410,14 +448,18 @@ erDiagram
     VOTO_DETALLE }o--o| CANDIDATO : "selecciona"
 
     %% --- Recibo / verificación (VOTAR-360, sin tabla off-chain de identidad) ---
-    %% Evidencia on-chain: SignedVoteCast → TRANSACCION_BLOCKCHAIN (derivada)
+    %% Evidencia on-chain: SignedVoteCast → TRANSACCION_BLOCKCHAIN (índice append-only VOTAR-373)
+    ELECCION ||--o{ TRANSACCION_BLOCKCHAIN : "indexa txs públicas"
     %% Recibo PDF: RECIBO_VOTACION client-side ligado solo por hash_transaccion
     TRANSACCION_BLOCKCHAIN ||--|| RECIBO_VOTACION : "materializa PDF local"
 
     %% --- Billetera efímera (sin FK permanente a Votante) ---
     BILLETERA_EFIMERA ||--o{ VOTO : "firma"
 
-    %% --- Registro de nullifiers (motor off-chain) ---
+    %% --- Registro de intentos off-chain (VOTAR-328/451/452) ---
+    ELECCION ||--o{ REGISTRO_INTENTO_SUFRAGIO : "registra consumo"
+
+    %% --- Registro de nullifiers (motor off-chain legacy) ---
     ELECCION ||--o{ REGISTRO_NULLIFIER : "registra nullifiers"
 
     %% --- Auditoría y trazabilidad ---

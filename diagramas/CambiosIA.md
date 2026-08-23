@@ -4,7 +4,24 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
-## [2026-08-11] — Sprint 5 — VOTAR-322 archivado lógico de comicios finalizados
+## [2026-08-23] — Sprint 5 — Ciclo de vida, pausa, actas, cooldown y RPC failover
+
+- **Tipo de cambio**: Carpeta `diagramas/sprint-5/` completa + C4 + secuencias + contexto-sistema
+- **Motivo**:
+  - Documentar Sprint 5 conforme norma (no editar in-place Sprint 4)
+  - Reflejar entregas: archivado, pausa, actas PDF, export PNG, failover RPC, faucet, fixes re-voto
+- **Cambios específicos**:
+  1. DER: `ARCHIVADA`, `pausada`/`pausada_en`, `CONFIGURACION_SISTEMA`, `REGISTRO_INTENTO_SUFRAGIO`, audit events pausa/archivado
+  2. Clases: `ArchivarComicioService`, `PausaComicioService`, `ActaApertura/Cierre`, `CooldownAnchor`, `RpcFailoverService`, `FaucetService`, `RevotePolicyService.registrarConsumo(votosObjetivo)`
+  3. Secuencias nuevas: `secuencia-archivar-comicio-votar-322.mmd`, `secuencia-pausa-comicio-votar-347.mmd`, `secuencia-intervalo-sufragios-votar-452.mmd`, `secuencia-acta-apertura-votar-374.mmd`
+  4. C4: cooldownClock, election seed, documentosComicio, pausaComicioPanel, rpcBackup, participacionExporter, dynamic views Sprint 5
+  5. `contexto-sistema.md`: sección 18 actualizada (2026-08-23)
+- **User Stories relacionadas**: VOTAR-322, VOTAR-347, VOTAR-348, VOTAR-374, VOTAR-375, VOTAR-376, VOTAR-386, VOTAR-387, VOTAR-451, VOTAR-452, VOTAR-453, VOTAR-456
+- **Archivos**: `Contexto/diagramas/sprint-5/*`, `Contexto/contexto-sistema.md`
+
+---
+
+## [2026-08-11] — Sprint 5 — VOTAR-322 archivado lógico de comicios finalizados (borrador inicial)
 
 - **Tipo de cambio**: Nueva carpeta `diagramas/sprint-5/` (norma: no editar in-place Sprint 4) + DER + Diagrama de clases
 - **Motivo**:
@@ -16,7 +33,7 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
   1. DER: `ELECCION.estado` → agrega `ARCHIVADA` a la lista de valores
   2. DER: `AUDIT_LOG.tipo_evento` → agrega `COMICIO_ARCHIVADO`
   3. Diagrama de clases: enum `EleccionEstado` → agrega valor `ARCHIVADA`
-  4. `votar.c4` y diagramas de secuencia se copian sin cambios de contenido (VOTAR-322 no introduce nuevos flujos ni componentes; reutiliza `lifecycleManager -> dataAccess` sin invocar la capa blockchain)
+  4. Ampliado en entrada 2026-08-23 con el resto de tickets Sprint 5
 - **User Stories relacionadas**: VOTAR-322 (archivado de comicios finalizados)
 - **Archivos**: `diagramas/sprint-5/Diagrama Entidad Relación - Sprint 5 - PFISI.mmd`, `diagramas/sprint-5/Diagrama de clases - Sprint 5 - PFISI.mmd`
 
