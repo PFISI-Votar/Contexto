@@ -1,7 +1,7 @@
 # VOTAR — Contexto del Sistema para Consulta IA
 
 > Documento de referencia rápida para agentes IA. Sintetiza toda la documentación del proyecto.
-> Última actualización: 2026-08-08 | Equipo: Five Stack | UTN FRVM
+> Última actualización: 2026-08-23 | Equipo: Five Stack | UTN FRVM
 
 ---
 
@@ -327,18 +327,22 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
-- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-4/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
+- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-5/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
+- **Archivado (VOTAR-322)**: `ARCHIVADA` es estado off-chain exclusivo. No escribe en Sepolia; el dashboard público sigue leyendo contratos on-chain.
+- **Pausa de emergencia (VOTAR-347)**: `eleccion.pausada` es ortogonal a `estado`. `whenNotPaused` bloquea `castSignedVote`; `AuditViewContract` sigue legible.
+- **Cooldown re-voto (VOTAR-452)**: `CooldownAnchor` en localStorage por `(idEleccion, JWT sub)`. `registrarConsumo(votosObjetivo)` es idempotente con lock pessimista (VOTAR-451).
+- **Semilla efímera (VOTAR-452)**: `getOrCreateElectionSeed` scopeada por legajo → nullifiers distintos por votante en el mismo navegador.
 
 ---
 
-## 18. Repositorios y Estado Actual (2026-08-08)
+## 18. Repositorios y Estado Actual (2026-08-23)
 
 | Repo | Stack | Rama principal de desarrollo | CI |
 |---|---|---|---|
 | `PFISI-Votar/blockchain` | Hardhat / Solidity | `dev` | test + Slither |
 | `PFISI-Votar/back` | NestJS / TypeORM | `dev` | lint + test + e2e |
 | `PFISI-Votar/front` | React / Vite | `dev` | Prettier + ESLint + Vitest |
-| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-4/votar.c4`) |
+| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-5/votar.c4`) |
 
 ### Dashboard Público — secciones implementadas
 
@@ -346,11 +350,12 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 |---|---|---|
 | `/dashboard` | Resumen | Metadatos off-chain + estado comicio |
 | `/dashboard/resultados` | VOTAR-364 | `AuditViewContract.getVotesByCandidate` + escrutinio |
-| `/dashboard/participacion` | VOTAR-365 | `getParticipationStats` + eventos `VoteCast` |
-| `/dashboard/revoto` | **VOTAR-329** (en PR) | `getRevoteStats` + curva acumulativa de sobreescritura |
+| `/dashboard/participacion` | VOTAR-365 + **VOTAR-376** | `getParticipationStats` + export PNG client-side |
+| `/dashboard/revoto` | VOTAR-329 | `getRevoteStats` + curva acumulativa de sobreescritura |
+| `/dashboard/transacciones` | VOTAR-373 | Índice append-only `transaccion_blockchain` |
 | `/dashboard/padron` | VOTAR-333 | Total habilitados (público) |
 | `/dashboard/oferta` | VOTAR-318 | Oferta electoral publicada |
-| `/dashboard/estado` | **VOTAR-367** (en PR) | `getElectionState` + `getMerkleRoot` + direcciones + límites re-voto |
+| `/dashboard/estado` | VOTAR-367 + **VOTAR-453** | Ficha técnica + `merkleRoot.consistente` |
 
 ### API pública del dashboard (sin autenticación)
 
@@ -359,18 +364,31 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `GET /elecciones/:id/resultados` | Escrutinio agregado (VOTAR-364) |
 | `GET /elecciones/:id/participacion-publica` | Métricas de afluencia (VOTAR-365) |
 | `GET /elecciones/:id/revoto-stats-publica` | Estadísticas de re-voto (VOTAR-329) |
-| `GET /elecciones/:id/contrato-estado-publica` | Metadatos técnicos del contrato (VOTAR-367) |
+| `GET /elecciones/:id/contrato-estado-publica` | Metadatos técnicos del contrato (VOTAR-367/453) |
+| `GET /elecciones/:id/transacciones-publica` | Historial cronológico de txs indexadas (VOTAR-373) |
+| `POST /elecciones/:id/votos/transaccion-publica` | Indexación anónima post-voto `{ txHash }` (VOTAR-373) |
 
-### Funcionalidades recientes entregadas / en PR
+### Sprint 5 — entregas principales
 
 | Ticket | Estado | Descripción |
 |---|---|---|
-| VOTAR-367 | PR abierta (#67 back, #81 front) | Ficha técnica del smart contract en dashboard (/estado) |
-| VOTAR-329 | PR abierta (#36 blockchain, #66 back, #80 front) | Estadísticas agregadas de re-voto en dashboard |
-| VOTAR-344 | Mergeado en dev (blockchain) | Re-voto con corrección atómica de contadores |
+| VOTAR-322 | Mergeado | Archivado lógico CERRADA → ARCHIVADA (solo PostgreSQL) |
+| VOTAR-347/348 | Mergeado | Pausa/reanudación de emergencia on-chain + flag `pausada` |
+| VOTAR-374/375 | Mergeado | Actas de apertura/cierre PDF client-side + `configuracion_sistema` |
+| VOTAR-376 | Mergeado | Exportación PNG curva de participación |
+| VOTAR-386 | En revisión | Failover RPC multi-proveedor (Infura/Alchemy/QuickNode) |
+| VOTAR-387 | Mergeado | FaucetService — recarga automática wallets Sepolia |
+| VOTAR-451/452 | En revisión | Fix doble consumo + intervalo entre sufragios |
+| VOTAR-453 | Mergeado | Hardening `contrato-estado-publica` |
+| VOTAR-456 | Mergeado | Rediseño panel admin alineado a BUD |
+
+### Funcionalidades heredadas (Sprint 4)
+
+| Ticket | Estado | Descripción |
+|---|---|---|
+| VOTAR-373 | Mergeado | Trazabilidad on-chain auditable (/transacciones) |
+| VOTAR-367 | Mergeado | Ficha técnica del smart contract en dashboard (/estado) |
+| VOTAR-329 | Mergeado | Estadísticas agregadas de re-voto en dashboard |
+| VOTAR-344 | Mergeado | Re-voto con corrección atómica de contadores |
 | VOTAR-350 | Mergeado | Views de auditoría pública (`AuditViewContract`) |
-| VOTAR-365 | Mergeado | Dashboard de participación pública |
-| VOTAR-364 | Mergeado | Escrutinio público on-chain |
-| VOTAR-360 | Mergeado | Recibo criptográfico de participación |
-| VOTAR-341 | Mergeado | Unicidad sin re-voto (`RevoteDisabled`) |
 | VOTAR-384 | Mergeado | Pipeline CI/CD en los tres repos |

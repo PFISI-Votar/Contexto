@@ -4,15 +4,16 @@
 %% UTN FRVM — Equipo 09 — Sprint 5
 %% ============================================================================
 %% Evolución respecto a Sprint 4:
-%% - VOTAR-322: estado ARCHIVADA en EleccionEstado (archivado lógico off-chain
-%%   de comicios CERRADA; sin interacción con el Smart Contract)
+%% - VOTAR-322: archivado lógico CERRADA → ARCHIVADA (solo PostgreSQL; cero gas)
+%% - VOTAR-347/348: pausa/reanudación de emergencia (Pausable + pausada off-chain)
+%% - VOTAR-374/375: actas de apertura/cierre (PDF client-side + CONFIGURACION_SISTEMA)
+%% - VOTAR-376: exportación PNG curva de participación (/dashboard/participacion)
+%% - VOTAR-386: failover RPC multi-proveedor (Infura/Alchemy/QuickNode)
+%% - VOTAR-387: FaucetService — recarga automática wallets de prueba Sepolia
+%% - VOTAR-451/452: consumo idempotente (votosObjetivo) + cooldown anclado (localStorage)
+%% - VOTAR-453: hardening contrato-estado-publica (merkleRoot.consistente, politicaRevoto)
 %% Hereda Sprint 4:
-%% - VOTAR-367: ficha técnica on-chain en /dashboard/estado + API contrato-estado-publica
-%% - VOTAR-329: getRevoteStats (totalRevotes, uniqueVoters, overwriteRatio) en AuditViewContract
-%% - Dashboard público: sección /revoto + API revoto-stats-publica
-%% Hereda Sprint 3:
-%% - VOTAR-346: VoteRegistry + evento VoteCast indexado (auditoría pública sin wallet)
-%% - VOTAR-350: AuditViewContract — views sin gas (estado, participación, tallies, recibo)
+%% - VOTAR-373, VOTAR-367, VOTAR-329, VOTAR-346, VOTAR-350
 %% ============================================================================
 
 classDiagram
@@ -134,6 +135,10 @@ classDiagram
         -DateTime fechaFin
         -EleccionEstado estado
         -TipoVotacion tipoVotacion
+        -boolean pausada
+        -DateTime pausadaEn
+        -DateTime aperturaRealEn
+        -String aperturaModo
         -DateTime fechaCreacion
         -DateTime fechaActualizacion
         +inicializarEnBorrador() void
@@ -141,6 +146,7 @@ classDiagram
         +estaEnBorrador() boolean
         +abrirVotacion() void
         +cerrarVotacion() void
+        +archivar() void
         +oficializarOferta() void
     }
 
@@ -348,6 +354,7 @@ classDiagram
         <<value object>>
         +estadoOnChain EleccionEstado
         +merkleRoot Hash
+        +merkleRootConsistente boolean
         +merklePublicado boolean
         +merklePublicadoEn DateTime
         +revoteHabilitado boolean
@@ -356,12 +363,119 @@ classDiagram
         +politicaRevoto PoliticaRevoto
     }
 
+    class CooldownAnchor {
+        <<value object — client-side>>
+        +unlockAtNodeSeconds int
+        +observedBlockTimestamp int
+        +observedAtWallMs int
+        +lastVoteAt int
+        +persistir(idEleccion int, votanteScope String) void
+        +remainingSeconds() int
+    }
+
+    class RegistroIntentoSufragio {
+        <<entidad TypeORM>>
+        +idRegistro int PK
+        +idEleccion int FK
+        +claveIntento String UK
+        +votosConsumidos int
+        +ultimoIntentoAt DateTime
+    }
+
+    class ConfiguracionSistema {
+        <<entidad TypeORM — singleton>>
+        +logoUrl String
+        +actaAperturaPlantilla JSON
+        +actaCierrePlantilla JSON
+        +actaAperturaModo String
+    }
+
+    class RevotePolicyService {
+        <<servicio NestJS>>
+        +obtenerEstado(idEleccion int, claveIntento String) EstadoRevoto
+        +registrarConsumo(idEleccion int, claveIntento String, votosObjetivo int) EstadoRevoto
+    }
+
+    class ArchivarComicioService {
+        <<servicio NestJS>>
+        +archivarManual(idEleccion int, actorId String) void
+    }
+
+    class PausaComicioService {
+        <<servicio NestJS>>
+        +solicitarPausa(idEleccion int, actorId String, reason String) void
+        +confirmarPausa(idEleccion int) void
+        +solicitarReanudacion(idEleccion int, actorId String) void
+        +confirmarReanudacion(idEleccion int) void
+    }
+
+    class ActaAperturaService {
+        <<servicio NestJS>>
+        +compilarDatos(idEleccion int) ActaAperturaDto
+    }
+
+    class ActaCierreService {
+        <<servicio NestJS>>
+        +compilarDatos(idEleccion int) ActaCierreDto
+    }
+
+    class RpcFailoverService {
+        <<servicio NestJS / viem>>
+        +callWithFailover(method String, params Object) any
+        +rotarProveedor(motivo String) void
+    }
+
+    class FaucetService {
+        <<servicio NestJS — cron>>
+        +checkAndTopUpWallets() void
+    }
+
+    class TransaccionBlockchain {
+        <<entidad TypeORM>>
+        +hashTransaccion Hash PK
+        +idEleccion int FK
+        +numeroBloque int
+        +marcaTiempo DateTime
+        +contratoEtiqueta String
+        +nombreEvento String
+        +descripcionLegible String
+        +logIndex int
+    }
+
+    class TransaccionBlockchainService {
+        <<servicio NestJS>>
+        +registrarDesdeTxHash(idEleccion int, txHash Hash) void
+        +registrarVotoPublico(idEleccion int, txHash Hash) void
+        +listarPorEleccion(idEleccion int) TransaccionBlockchain[]
+    }
+
+    class TransaccionesPublicService {
+        <<servicio NestJS>>
+        +obtenerTransaccionesPublica(idEleccion int) DTO
+    }
+
     %% ── Composición y asociaciones ───────────────────────────────────────
     Eleccion "1" *-- "1" ConfiguracionComicio : configura
     Eleccion "1" *-- "1" Boleta : publica
     Eleccion "1" *-- "0..1" ConfiguracionDatosCandidato : define campos
     Eleccion "1" *-- "0..1" PadronElectoral : habilita
+    Eleccion "1" o-- "0..*" TransaccionBlockchain : indexa txs públicas
+    Eleccion "1" o-- "0..*" RegistroIntentoSufragio : cuenta intentos off-chain
 
+    RevotePolicyService --> RegistroIntentoSufragio : registrarConsumo idempotente
+    RevotePolicyService ..> ConfiguracionComicio : lee maxVotos / minIntervalo
+    ArchivarComicioService --> Eleccion : CERRADA → ARCHIVADA (sin RPC)
+    PausaComicioService --> Eleccion : pausada / pausadaEn
+    PausaComicioService ..> ContratoBoleta : pause()/unpause() on-chain
+    ActaAperturaService ..> ConfiguracionSistema : plantilla + logo
+    ActaAperturaService ..> PadronElectoral : resumen padrón (VOTAR-374)
+    ActaCierreService ..> ConfiguracionSistema : plantilla cierre (VOTAR-375)
+    RpcFailoverService ..> ContratoBoleta : eth_call / sendTransaction
+    FaucetService ..> RpcFailoverService : balance + transfer SepoliaETH
+
+    TransaccionesPublicService --> TransaccionBlockchainService : listar
+    TransaccionBlockchainService ..> ContratoBoleta : getTransactionReceipt / parse
+    TransaccionBlockchainService --> TransaccionBlockchain : persiste
     Boleta "1" *-- "1..*" Categoria : organiza roles
     Boleta "1" *-- "0..*" Lista : contiene
     Lista "1" *-- "0..*" Candidato : compone
@@ -409,12 +523,15 @@ classDiagram
     VistaAuditoria ..> MetadatosContratoPublico : agrega estado + Merkle (VOTAR-367)
     AlmacenRaizMerkle ..> MetadatosContratoPublico : raíz / publicación
 
-    note for Eleccion "US-316: inicializarEnBorrador() crea el archivo\nen capa relacional sin despliegue blockchain.\nUS-319: oficializarOferta() bloqueada si alguna\nlista no alcanza minimoPostulantes por categoría."
+    note for Eleccion "US-316: inicializarEnBorrador() crea el archivo\nen capa relacional sin despliegue blockchain.\nVOTAR-322: archivar() solo PostgreSQL (estado ARCHIVADA);\nprohibido escribir en Sepolia. Endpoints públicos intactos.\nVOTAR-347: `pausada` es eje ortogonal a `estado`."
     note for PadronVotante "US-330: solo hash Keccak-256 (DNI+email).\nSin FK a Votante ni PII en texto plano (Ley 25.326)."
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
-    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry\n(voterHash=nullifier; sin indexar wallet).\nVOTAR-341: enforceRevotePolicy → RevoteDisabled\nsi !revoteEnabled y nullifier ya votó."
+    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry.\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
+    note for RegistroIntentoSufragio "VOTAR-328/451/452: claveIntento opaca\n(JWT sub hash). votosObjetivo sync idempotente\ntras cast on-chain; lock pessimista evita doble consumo."
+    note for CooldownAnchor "VOTAR-449/452: ancla unlockAt en reloj del nodo;\npersiste en localStorage por (idEleccion, votanteScope).\nSobrevive cierre de pestaña; no reinicia countdown espurio."
+    note for VistaAuditoria "VOTAR-453: merkleRootConsistente compara\nraíz on-chain vs PADRON_ELECTORAL.hash_padron.\npoliticaRevoto=DISABLED si !revoteEnabled."
     note for RegistroVoto "VOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
     note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). VOTAR-367: getElectionState +\nmerkleRootStore para ficha técnica pública.\nverifyReceipt usa ancla anónima (nullifier)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."

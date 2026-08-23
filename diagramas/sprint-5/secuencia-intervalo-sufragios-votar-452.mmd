@@ -1,0 +1,39 @@
+%% VOTAR-451/452 — Intervalo entre sufragios + consumo idempotente
+%% Fixes: countdown anclado (localStorage), votanteScope por legajo, votosObjetivo sync
+
+sequenceDiagram
+  autonumber
+  actor Votante
+  participant BUD as BUD Wizard<br/>(cooldown-clock)
+  participant Seed as ephemeral-wallet-seed<br/>(localStorage)
+  participant API as API Backend<br/>(VotoController)
+  participant Rev as RevotePolicyService
+  participant DB as registro_intento_sufragio
+  participant RPC as Sepolia RPC
+  participant Ballot as BallotContract
+
+  Votante->>BUD: Login SSO (JWT sub → votanteScope)
+  BUD->>Seed: getOrCreateElectionSeed(idEleccion, votanteScope)
+  Note over Seed: VOTAR-452 bug 4: legajos distintos → seeds distintos
+
+  Votante->>RPC: castSignedVote (1er sufragio)
+  RPC->>Ballot: recordVote + cooldown on-chain
+  Ballot-->>BUD: SignedVoteCast (txHash)
+  BUD->>BUD: buildAnchorFromOnChain → localStorage
+  Note over BUD: VOTAR-452: ancla sobrevive cierre de pestaña
+
+  BUD->>API: POST /votos/registrar-consumo { votosObjetivo: 1 }
+  API->>Rev: registrarConsumo(id, claveIntento, 1)
+  Rev->>DB: pessimistic lock + votos_consumidos=1
+  Rev-->>BUD: intentosRestantes, proximoReintentoEnSegundos
+
+  BUD->>BUD: Countdown desde unlockAt (no reinicia a 20s — bug 1/2)
+
+  Note over BUD,API: VOTAR-451: catch-up race — segunda llamada con mismo votosObjetivo es no-op
+  BUD->>API: POST registrar-consumo { votosObjetivo: 1 } (catch-up)
+  Rev->>DB: votos_consumidos >= target → idempotent return
+
+  Votante->>BUD: Tras cooldown → 2do sufragio
+  BUD->>RPC: castSignedVote (mismo nullifier LAST_WINS)
+  BUD->>API: POST registrar-consumo { votosObjetivo: 2 }
+  Rev->>DB: votos_consumidos=2 (cooldown gate off-chain VOTAR-325)
