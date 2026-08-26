@@ -1,0 +1,32 @@
+%% VOTAR-322 — Archivar comicio finalizado (solo off-chain)
+%% UAT-01: desaparece del panel activo | UAT-02: dashboard público intacto | UAT-03: 401 en reportes admin sin JWT
+
+sequenceDiagram
+  autonumber
+  actor Autoridad
+  participant Panel as Panel de Administración
+  participant API as API Backend<br/>(EleccionController)
+  participant Svc as ArchivarComicioService
+  participant DB as PostgreSQL
+  participant Dash as Dashboard Público
+  participant RPC as Sepolia RPC
+
+  Autoridad->>Panel: Archivar comicio CERRADA
+  Panel->>API: POST /elecciones/:id/archivar (JWT election_admin)
+  API->>Svc: archivarManual(id, actorId)
+  Svc->>DB: UPDATE eleccion SET estado=ARCHIVADA
+  Note over Svc,RPC: Prohibido: ninguna tx Sepolia (cero gas)
+  Svc->>DB: INSERT audit_log COMICIO_ARCHIVADO
+  Svc-->>Panel: 200 OK
+  Panel-->>Autoridad: Comic removido de panel activo → pestaña Históricos
+
+  Autoridad->>Panel: GET /elecciones (sin filtro)
+  Panel->>API: listar activos
+  API->>DB: WHERE estado != ARCHIVADA
+  API-->>Panel: sin el comicio archivado
+
+  actor Auditor
+  Auditor->>Dash: GET /dashboard/resultados (comicio archivado)
+  Dash->>RPC: eth_call AuditViewContract (sin auth)
+  RPC-->>Dash: escrutinio on-chain intacto
+  Dash-->>Auditor: evidencia digital sin alteraciones

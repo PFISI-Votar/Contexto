@@ -4,6 +4,22 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-26] — Sprint 6 — VOTAR-459 visibilidad configurable del Dashboard Público
+
+- **Tipo de cambio**: Nueva carpeta `diagramas/sprint-6/` (norma: no editar in-place Sprint 5) + DER + Diagrama de clases (copiados de Sprint 5 y actualizados)
+- **Motivo**:
+  - US: Como Autoridad Electoral quiero configurar la visibilidad de las solapas Resultados, Participación, Re-voto y Transacciones del Dashboard Público mientras el comicio está ABIERTO, para no inducir comportamiento estratégico del electorado con datos parciales en vivo
+  - La restricción rige solo mientras el comicio no cerró: en CERRADA/ESCRUTADA/ARCHIVADA todas las secciones vuelven a ser públicas
+  - Editable solo en BORRADOR y CONFIGURADA (se congela al abrir el comicio)
+- **Cambios específicos**:
+  1. DER: `CONFIGURACION_COMICIO` agrega `mostrar_dashboard_resultados`, `mostrar_dashboard_participacion`, `mostrar_dashboard_revoto`, `mostrar_dashboard_transacciones` (boolean, default true)
+  2. Diagrama de clases: nota de evolución Sprint 6 (sin nuevas clases de dominio; lógica en `ConfiguracionComicioService` y `SeccionDashboardVisibleGuard`)
+  3. Resto de los archivos del sprint (secuencias, `votar.c4`) copiados sin cambios de contenido como base de Sprint 6
+- **User Stories relacionadas**: VOTAR-459
+- **Archivos**: `Contexto/diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`
+
+---
+
 ## [2026-08-23] — Sprint 5 — Ciclo de vida, pausa, actas, cooldown y RPC failover
 
 - **Tipo de cambio**: Carpeta `diagramas/sprint-5/` completa + C4 + secuencias + contexto-sistema

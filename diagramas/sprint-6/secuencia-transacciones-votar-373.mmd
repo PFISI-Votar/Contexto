@@ -1,0 +1,39 @@
+%% VOTAR-373 — Trazabilidad on-chain auditable (fix Alchemy eth_getLogs)
+%% UAT-01: tabla cronológica en /dashboard/transacciones
+%% UAT-02: links Etherscan verificables
+%% Patrón VOTAR-433: índice append-only, sin scan masivo en lectura
+
+sequenceDiagram
+  autonumber
+  actor Votante
+  actor Auditor
+  participant BUD as BUD / vote-transmitter
+  participant Dash as Dashboard Público<br/>(/dashboard/transacciones)
+  participant API as API Backend
+  participant Idx as TransaccionBlockchainService
+  participant BC as BlockchainService
+  participant PG as PostgreSQL<br/>(transaccion_blockchain)
+  participant RPC as Sepolia RPC
+
+  Note over Votante,RPC: Flujo A — Escritura (voto confirmado)
+  Votante->>BUD: Confirma sufragio firmado
+  BUD->>RPC: castSignedVote → SignedVoteCast
+  RPC-->>BUD: txHash + blockNumber
+  BUD->>API: POST /votos/transaccion-publica { txHash }<br/>(credentials: omit)
+  API->>Idx: registrarVotoPublico(id, txHash)
+  Idx->>BC: getVoteParticipationByTxHash(txHash)
+  BC->>RPC: eth_getTransactionReceipt (1 RPC)
+  RPC-->>BC: receipt + SignedVoteCast
+  Idx->>BC: parseElectionTransactionAuditEntry
+  Idx->>PG: INSERT idempotente (sin nullifier/voterHash)
+
+  Note over Auditor,PG: Flujo B — Lectura (auditor)
+  Auditor->>Dash: Abre solapa Transacciones
+  Dash->>API: GET /elecciones/:id/transacciones-publica
+  API->>Idx: listarPorEleccion(id)
+  Idx->>PG: SELECT ORDER BY numero_bloque
+  PG-->>Dash: filas + explorerUrl
+  Dash-->>Auditor: Tabla cronológica (UAT-01)
+  Auditor->>RPC: Click Etherscan (UAT-02)
+
+  Note over Dash,RPC: Sin eth_getLogs / queryFilter en lectura del dashboard
