@@ -1,0 +1,30 @@
+%% VOTAR-329 — Estadísticas de re-voto en Dashboard público
+%% UAT-01: veracidad de métricas | UAT-02: actualización dinámica (< 5s)
+
+sequenceDiagram
+  autonumber
+  actor Auditor
+  participant Dash as Dashboard Público<br/>(/dashboard/revoto)
+  participant API as API Backend<br/>(RevotoStatsPublicController)
+  participant Svc as RevotoStatsPublicService
+  participant BC as BlockchainService
+  participant RPC as Sepolia RPC
+  participant AV as AuditViewContract
+  participant VR as VoteRegistry
+
+  Auditor->>Dash: Abre sección Re-voto (sin auth)
+  Dash->>API: GET /elecciones/:id/revoto-stats-publica
+  API->>Svc: obtenerRevotoStatsPublica(id)
+  Svc->>BC: getRevoteStats(id)
+  BC->>RPC: eth_call getRevoteStats
+  RPC->>AV: view (sin gas)
+  AV->>VR: getRevoteStats(electionId)
+  VR-->>AV: (totalRevotes, uniqueVoters, overwriteRatio WAD)
+  AV-->>BC: stats on-chain
+  Svc->>BC: getRevoteOverwriteTimeline(id, horas)
+  BC->>RPC: eth_getLogs VoteCast (isOverwrite)
+  BC-->>Svc: serie temporal acumulativa
+  Svc-->>Dash: { totalRevotes, uniqueVoters, overwriteRatio, serieTemporal }
+  Dash-->>Auditor: Tarjetas + gráfico (polling 4s si comicio abierto)
+
+  Note over Dash,Auditor: UAT-02: nuevos re-votos on-chain<br/>reflejados en pantalla en < 5 segundos
