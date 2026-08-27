@@ -1,7 +1,7 @@
 # VOTAR — Contexto del Sistema para Consulta IA
 
 > Documento de referencia rápida para agentes IA. Sintetiza toda la documentación del proyecto.
-> Última actualización: 2026-08-23 | Equipo: Five Stack | UTN FRVM
+> Última actualización: 2026-08-26 | Equipo: Five Stack | UTN FRVM
 
 ---
 
@@ -327,7 +327,8 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
-- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-5/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
+- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-6/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
+- **Visibilidad del dashboard público (VOTAR-459)**: `CONFIGURACION_COMICIO` agrega 4 flags (`mostrar_dashboard_resultados/participacion/revoto/transacciones`, default `true`) para ocultar solapas mientras el comicio no cerró. Enforcement con 403 vía `SeccionDashboardVisibleGuard` en los endpoints públicos correspondientes, no solo en el frontend.
 - **Archivado (VOTAR-322)**: `ARCHIVADA` es estado off-chain exclusivo. No escribe en Sepolia; el dashboard público sigue leyendo contratos on-chain.
 - **Pausa de emergencia (VOTAR-347)**: `eleccion.pausada` es ortogonal a `estado`. `whenNotPaused` bloquea `castSignedVote`; `AuditViewContract` sigue legible.
 - **Cooldown re-voto (VOTAR-452)**: `CooldownAnchor` en localStorage por `(idEleccion, JWT sub)`. `registrarConsumo(votosObjetivo)` es idempotente con lock pessimista (VOTAR-451).
@@ -342,20 +343,22 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `PFISI-Votar/blockchain` | Hardhat / Solidity | `dev` | test + Slither |
 | `PFISI-Votar/back` | NestJS / TypeORM | `dev` | lint + test + e2e |
 | `PFISI-Votar/front` | React / Vite | `dev` | Prettier + ESLint + Vitest |
-| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-5/votar.c4`) |
+| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-6/votar.c4`) |
 
 ### Dashboard Público — secciones implementadas
 
-| Ruta | Ticket | Fuente de datos |
-|---|---|---|
-| `/dashboard` | Resumen | Metadatos off-chain + estado comicio |
-| `/dashboard/resultados` | VOTAR-364 | `AuditViewContract.getVotesByCandidate` + escrutinio |
-| `/dashboard/participacion` | VOTAR-365 + **VOTAR-376** | `getParticipationStats` + export PNG client-side |
-| `/dashboard/revoto` | VOTAR-329 | `getRevoteStats` + curva acumulativa de sobreescritura |
-| `/dashboard/transacciones` | VOTAR-373 | Índice append-only `transaccion_blockchain` |
-| `/dashboard/padron` | VOTAR-333 | Total habilitados (público) |
-| `/dashboard/oferta` | VOTAR-318 | Oferta electoral publicada |
-| `/dashboard/estado` | VOTAR-367 + **VOTAR-453** | Ficha técnica + `merkleRoot.consistente` |
+| Ruta | Ticket | Fuente de datos | Configurable (VOTAR-459) |
+|---|---|---|---|
+| `/dashboard` | Resumen | Metadatos off-chain + estado comicio | Siempre visible (se simplifica si Resultados/Participación están ocultas) |
+| `/dashboard/resultados` | VOTAR-364 | `AuditViewContract.getVotesByCandidate` + escrutinio | Sí — `mostrar_dashboard_resultados` |
+| `/dashboard/participacion` | VOTAR-365 + **VOTAR-376** | `getParticipationStats` + export PNG client-side | Sí — `mostrar_dashboard_participacion` |
+| `/dashboard/revoto` | VOTAR-329 | `getRevoteStats` + curva acumulativa de sobreescritura | Sí — `mostrar_dashboard_revoto` |
+| `/dashboard/transacciones` | VOTAR-373 | Índice append-only `transaccion_blockchain` | Sí — `mostrar_dashboard_transacciones` |
+| `/dashboard/padron` | VOTAR-333 | Total habilitados (público) | Siempre visible |
+| `/dashboard/oferta` | VOTAR-318 | Oferta electoral publicada | Siempre visible |
+| `/dashboard/estado` | VOTAR-367 + **VOTAR-453** | Ficha técnica + `merkleRoot.consistente` | Siempre visible |
+
+Las 4 solapas configurables solo pueden ocultarse mientras el comicio no cerró; en CERRADA/ESCRUTADA/ARCHIVADA vuelven a ser públicas sin importar el flag. Editable desde `/comicios/:id/oferta` solo en BORRADOR/CONFIGURADA.
 
 ### API pública del dashboard (sin autenticación)
 
@@ -367,6 +370,14 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `GET /elecciones/:id/contrato-estado-publica` | Metadatos técnicos del contrato (VOTAR-367/453) |
 | `GET /elecciones/:id/transacciones-publica` | Historial cronológico de txs indexadas (VOTAR-373) |
 | `POST /elecciones/:id/votos/transaccion-publica` | Indexación anónima post-voto `{ txHash }` (VOTAR-373) |
+
+Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **403** cuando la solapa fue ocultada por `GET/PUT /elecciones/:id/visibilidad-dashboard` (admin, VOTAR-459) y el comicio no cerró.
+
+### Sprint 6 — en curso
+
+| Ticket | Estado | Descripción |
+|---|---|---|
+| VOTAR-459 | Implementado | Visibilidad configurable de solapas del Dashboard Público (Resultados/Participación/Re-voto/Transacciones), enforcement 403 en backend |
 
 ### Sprint 5 — entregas principales
 

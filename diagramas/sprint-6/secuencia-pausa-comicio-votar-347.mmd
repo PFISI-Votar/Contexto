@@ -1,0 +1,42 @@
+%% VOTAR-347/348 — Pausa y reanudación de emergencia del comicio
+%% UAT-01: pause() revierte castVote | UAT-03: getters siguen operativos | UAT-04: views AuditView sin whenNotPaused
+
+sequenceDiagram
+  autonumber
+  actor Autoridad as Autoridad Electoral (PAUSER)
+  participant Panel as Panel de Administración
+  participant API as API Backend<br/>(EleccionController)
+  participant Svc as PausaComicioService
+  participant BC as BlockchainService
+  participant RPC as Sepolia RPC
+  participant Ballot as BallotContract
+  participant Registry as VoteRegistry
+  participant BUD as Boleta Única Digital
+  actor Votante
+
+  Autoridad->>Panel: Solicitar pausa de emergencia
+  Panel->>API: POST /elecciones/:id/pausar { reason }
+  API->>Svc: solicitarPausa → confirmarPausa (n-of-m)
+  Svc->>BC: pause(electionId, reason)
+  BC->>RPC: pause(reason) BallotContract + VoteRegistry
+  RPC->>Ballot: whenNotPaused bloquea castSignedVote
+  RPC->>Registry: whenNotPaused bloquea recordVote
+  Ballot-->>RPC: Paused(account, reason)
+  Svc->>API: UPDATE eleccion.pausada=true
+  Svc-->>Panel: comicio pausado
+
+  Votante->>BUD: Intenta emitir sufragio
+  BUD->>BUD: eleccion.pausada → bloqueo UI (sin gas)
+  Votante->>RPC: castSignedVote (bypass UI)
+  RPC->>Ballot: revert EnforcedPause
+
+  actor Auditor
+  Auditor->>RPC: eth_call getParticipationStats
+  RPC->>Registry: view (lectura OK — UAT-03/UAT-04)
+  Registry-->>Auditor: stats transparentes durante pausa
+
+  Autoridad->>Panel: Confirmar reanudación
+  Panel->>API: POST /elecciones/:id/reanudar
+  Svc->>BC: unpause(electionId)
+  BC->>RPC: unpause() Ballot + Registry
+  Svc->>API: UPDATE eleccion.pausada=false
