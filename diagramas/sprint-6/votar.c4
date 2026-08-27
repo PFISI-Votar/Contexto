@@ -248,6 +248,10 @@ model {
         technology "NestJS Service"
         description "GET /acta-cierre: escrutinio final + participación + verificación on-chain. PDF client-side con plantilla configurable"
       }
+      electoralImageService = component "Almacenamiento de Imágenes Electorales (VOTAR-466)" {
+        technology "NestJS Service / sharp / PostgreSQL bytea"
+        description "Reemplaza el disco local del contenedor (/uploads), que perdía archivos al recrear el contenedor mientras la fila de dominio persistía. Normaliza y optimiza a WebP con presupuesto de tamaño por tipo (candidato-foto, lista-logo, logo-institucional); persiste los bytes en imagen_electoral. GET /imagenes/:idImagen sirve el contenido, público, con ETag/Cache-Control immutable"
+      }
       rpcFailover = component "Cliente RPC con Failover (VOTAR-386)" {
         technology "ethers v6 / viem FallbackProvider"
         description "Rotación Infura→Alchemy→QuickNode ante 429, timeout >15s o error de red. Log de failover + verificación skew de bloque"
@@ -538,6 +542,7 @@ model {
   votar.api.archivarComicioService -> votar.api.dataAccess "UPDATE estado=ARCHIVADA (sin RPC)"
   votar.api.pausaComicioService -> votar.api.rpcFailover "pause()/unpause() Ballot + Registry"
   votar.api.actaAperturaService -> votar.api.dataAccess "Lee padrón, oferta, configuracion_sistema"
+  votar.api.electoralImageService -> votar.api.dataAccess "CRUD bytea en imagen_electoral (VOTAR-466)"
   votar.api.faucetService -> votar.api.rpcFailover "Transfer SepoliaETH a TEST_WALLET_ADDRESSES (VOTAR-387)"
   votar.api.revotePolicyService -> votar.api.dataAccess "UPSERT registro_intento_sufragio (VOTAR-451/452)"
   votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/registrar-consumo { votosObjetivo }" { technology "JSON/HTTPS" }

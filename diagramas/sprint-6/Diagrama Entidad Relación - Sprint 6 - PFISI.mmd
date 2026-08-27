@@ -82,6 +82,7 @@ erDiagram
         string nombre "Nombre completo de la lista"
         string sigla "Sigla o abreviatura"
         string color "Color identificativo (hex)"
+        string logo_url "Ruta pública /imagenes/{id_imagen} del logo (VOTAR-466). Atributo preexistente desde Sprint 2, no documentado hasta ahora"
         datetime fecha_oficializacion "Fecha de oficialización"
         string estado "BORRADOR | OFICIALIZADA | INHABILITADA"
         int list_id "Identificador congelado post-oficialización para Web3/BUD (UNIQUE por boleta)"
@@ -94,7 +95,7 @@ erDiagram
         string nombre "Nombre del candidato"
         string apellido "Apellido del candidato"
         int orden "Orden en la lista"
-        string foto_url "URL de la foto del candidato"
+        string foto_url "Ruta pública /imagenes/{id_imagen} servida desde IMAGEN_ELECTORAL (VOTAR-466). Antes: ruta a archivo en disco (/uploads/...)"
         json datos_adicionales "Valores de campos dinámicos por candidato (JSONB — US-318)"
     }
 
@@ -314,12 +315,41 @@ erDiagram
 
     CONFIGURACION_SISTEMA {
         int id PK "Siempre 1 (singleton)"
-        string logo_url "Ruta al logo embebido en actas PDF"
+        string logo_url "Ruta pública /imagenes/{id_imagen} embebida en actas PDF (VOTAR-466). Antes: ruta a archivo en disco (/uploads/...)"
         jsonb acta_apertura_plantilla "Toggles secciones Acta de Apertura (VOTAR-374)"
         jsonb acta_cierre_plantilla "Toggles secciones Acta de Cierre (VOTAR-375)"
         string acta_apertura_modo "SIMPLE | PERSONALIZADO"
         text acta_apertura_plantilla_texto "Cuerpo personalizado (modo PERSONALIZADO)"
         datetime fecha_actualizacion "Última modificación de plantillas"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
+    %% ALMACENAMIENTO DE IMÁGENES ELECTORALES (VOTAR-466)
+    %% Reemplaza el disco local del contenedor (/uploads): la fila de dominio
+    %% (candidato.foto_url, lista.logo_url, configuracion_sistema.logo_url)
+    %% persistía en el volumen de Postgres pero el archivo referenciado vivía
+    %% en el filesystem efímero de `back` y se perdía al recrear el
+    %% contenedor. Los bytes ahora heredan el mismo volumen que el resto del
+    %% estado.
+    %% SIN FK desde CANDIDATO / LISTA / CONFIGURACION_SISTEMA: el vínculo es
+    %% por URL en varchar (`/imagenes/{id_imagen}`), no por clave foránea.
+    %% Decisión consciente para acotar el blast radius del cambio (no había
+    %% que tocar los servicios ni los DTOs de esas tres entidades); el costo
+    %% es la posibilidad de filas huérfanas si un borrado falla a mitad de
+    %% camino — el mismo riesgo que ya existía con archivos huérfanos en
+    %% disco, así que no se agrava.
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    IMAGEN_ELECTORAL {
+        uuid id_imagen PK "Identificador de la imagen (referenciado por URL, no por FK)"
+        string tipo "candidato-foto | lista-logo | logo-institucional"
+        string mime_type "Siempre image/webp: el contenido se optimiza al guardar"
+        bytea contenido "Bytes de la imagen, ya normalizados (resize + WebP + presupuesto de tamaño)"
+        int tamano_bytes "Peso del contenido, usado para verificar el presupuesto por tipo"
+        string checksum_sha256 "Hex de 64 chars; funciona como ETag HTTP e idempotencia de seed"
+        int ancho "Ancho final en píxeles"
+        int alto "Alto final en píxeles"
+        datetime fecha_creacion "Timestamp de carga"
     }
 
     %% ═══════════════════════════════════════════════════════════════════════

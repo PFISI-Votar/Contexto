@@ -219,6 +219,7 @@ classDiagram
         -String nombre
         -String sigla
         -String color
+        -String logoUrl
         -DateTime fechaOficializacion
         -String estado
         -Integer listId
@@ -394,6 +395,35 @@ classDiagram
         +actaAperturaModo String
     }
 
+    %% VOTAR-466 — reemplaza el disco local (/uploads) como almacenamiento
+    %% de imágenes electorales. Sin relación de composición formal con
+    %% Candidato/Lista/ConfiguracionSistema: el vínculo es por URL en
+    %% varchar, no por referencia de objeto (ver nota en el DER).
+    class ImagenElectoral {
+        <<entidad TypeORM>>
+        +idImagen String
+        +tipo String
+        +mimeType String
+        +contenido Bytes
+        +tamanoBytes int
+        +checksumSha256 String
+        +ancho int
+        +alto int
+        +fechaCreacion DateTime
+    }
+
+    class ElectoralImageService {
+        <<servicio NestJS>>
+        +saveImage(file Multer.File, kind ElectoralImageKind) String
+        +obtenerImagen(idImagen String) ImagenElectoral
+        +deleteIfManagedUrl(url String) void
+    }
+
+    class ElectoralImageController {
+        <<controlador NestJS — público, sin auth>>
+        +obtener(idImagen String) StreamableFile
+    }
+
     class RevotePolicyService {
         <<servicio NestJS>>
         +obtenerEstado(idEleccion int, claveIntento String) EstadoRevoto
@@ -474,6 +504,13 @@ classDiagram
     ActaAperturaService ..> ConfiguracionSistema : plantilla + logo
     ActaAperturaService ..> PadronElectoral : resumen padrón (VOTAR-374)
     ActaCierreService ..> ConfiguracionSistema : plantilla cierre (VOTAR-375)
+
+    %% VOTAR-466 — persistencia de imágenes electorales en Postgres
+    ElectoralImageController ..> ElectoralImageService : obtenerImagen()
+    ElectoralImageService ..> ImagenElectoral : save/delete/select
+    Candidato ..> ElectoralImageService : fotoUrl (saveImage/deleteIfManagedUrl)
+    Lista ..> ElectoralImageService : logoUrl (saveImage/deleteIfManagedUrl)
+    ConfiguracionSistema ..> ElectoralImageService : logoUrl (saveImage/deleteIfManagedUrl)
     RpcFailoverService ..> ContratoBoleta : eth_call / sendTransaction
     FaucetService ..> RpcFailoverService : balance + transfer SepoliaETH
 

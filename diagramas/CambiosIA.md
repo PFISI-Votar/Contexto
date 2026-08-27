@@ -4,6 +4,25 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-27] — Sprint 6 — VOTAR-466 persistencia de imágenes en PostgreSQL
+
+- **Tipo de cambio**: DER + Diagrama de clases + C4 de `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; carpeta Sprint 6 tomada como base desde `feature/VOTAR-459-fix-visibilidad-de-dashboard-publico`, ver entrada anterior, para evitar divergencia al mergear ambas ramas)
+- **Motivo**:
+  - Las imágenes electorales (foto de candidato, logo de lista, logo institucional) se guardaban en el disco local del contenedor `back` y se servían por `/uploads/`. La fila de dominio (`candidato.foto_url`, etc.) persiste en el volumen de Postgres; el archivo referenciado no — al recrear el contenedor (`docker compose down/up`) el archivo se pierde y la referencia queda rota
+  - Se verificó explícitamente que ninguna imagen viaja a la blockchain: los contratos en `blockchain/contracts/` solo manejan `bytes32`, pruebas Merkle y firmas EIP-712; el único dato de candidato on-chain es un `uint256` sellado en `VoteRegistry.registerCandidates`
+  - Volumen bajo (decenas de imágenes, ≤100 KB cada una tras optimizar) → `bytea` en PostgreSQL es la opción adecuada frente a un servicio de almacenamiento externo
+- **Cambios específicos**:
+  1. DER: nueva entidad `IMAGEN_ELECTORAL` (`id_imagen` uuid PK, `tipo`, `mime_type`, `contenido` bytea, `tamano_bytes`, `checksum_sha256`, `ancho`, `alto`, `fecha_creacion`)
+  2. DER: `CANDIDATO.foto_url` y `CONFIGURACION_SISTEMA.logo_url` documentan que ahora contienen `/imagenes/{id_imagen}` en lugar de una ruta a archivo en disco (`/uploads/...`)
+  3. DER: se documenta `LISTA.logo_url`, atributo existente en la base desde Sprint 2 (migración `AddListaLogoUrl`) pero ausente del diagrama hasta ahora
+  4. DER: nota explícita — `IMAGEN_ELECTORAL` no tiene FK desde `CANDIDATO`/`LISTA`/`CONFIGURACION_SISTEMA`; el vínculo es por URL en varchar, decisión consciente para acotar el blast radius del cambio
+  5. Diagrama de clases: nuevas clases `ImagenElectoral` (entidad), `ElectoralImageService` (`saveImage`, `obtenerImagen`, `deleteIfManagedUrl`), `ElectoralImageController` (`obtener`); se agrega `Lista.logoUrl` (mismo gap que en el DER)
+  6. C4: nuevo componente `electoralImageService` dentro del contenedor backend (`votar.api`), con su relación hacia `dataAccess`
+- **User Stories relacionadas**: VOTAR-466
+- **Archivos**: `Contexto/diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/votar.c4`
+
+---
+
 ## [2026-08-26] — Sprint 6 — VOTAR-459 visibilidad configurable del Dashboard Público
 
 - **Tipo de cambio**: Nueva carpeta `diagramas/sprint-6/` (norma: no editar in-place Sprint 5) + DER + Diagrama de clases (copiados de Sprint 5 y actualizados)
