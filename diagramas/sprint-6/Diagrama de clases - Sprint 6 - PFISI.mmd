@@ -4,6 +4,8 @@
 %% UTN FRVM — Equipo 09 — Sprint 6
 %% ============================================================================
 %% Evolución respecto a Sprint 5:
+%% - VOTAR-474: escrutinio multi-categoría on-chain — castSignedVote/recordVote
+%%   aceptan candidatoIds[] (EIP-712 domain v2); VoteUpdated por cada id
 %% - VOTAR-459: visibilidad configurable de solapas del Dashboard Público
 %%   (ConfiguracionComicioService.obtener/guardarVisibilidadDashboard,
 %%   SeccionDashboardVisibleGuard) — sin nuevas clases de dominio en este modelo
@@ -311,8 +313,8 @@ classDiagram
 
     class ContratoBoleta {
         <<contrato inteligente>>
-        +castVote(eleccionId int, hojaVotante Hash, proof MerkleProof, candidatoId int) void
-        +castSignedVote(... nullifier Hash, selectionHash Hash, firma bytes, candidatoId int) void
+        +castVote(eleccionId int, hojaVotante Hash, proof MerkleProof) void
+        +castSignedVote(... nullifier Hash, selectionHash Hash, firma bytes, candidatoIds int[]) void
         +haVotado(eleccionId int, hojaVotante Hash) boolean
         -verificarMerkleProof(eleccionId int, hojaVotante Hash, proof MerkleProof) void
         -enforceRevotePolicy(eleccionId int, nullifier Hash) void
@@ -322,8 +324,9 @@ classDiagram
         <<contrato inteligente>>
         +VOTO_BLANCO int
         +VOTO_NULO int
+        +MAX_CANDIDATES_PER_BALLOT int
         +revoteEnabled boolean
-        +recordVote(eleccionId int, voterHash Hash, candidatoId int) void
+        +recordVote(eleccionId int, voterHash Hash, candidatoIds int[]) void
         +getTally(eleccionId int, candidatoId int) int
         +getParticipationStats(eleccionId int) StatsParticipacion
         +getVotesByCandidate(eleccionId int, candidatoId int) int
@@ -540,7 +543,7 @@ classDiagram
     MerkleTree ..> AlmacenRaizMerkle : ancla raíz
     ContratoBoleta ..> AlmacenRaizMerkle : consulta raíz vigente
     ContratoBoleta ..> MerkleProof : verifica on-chain
-    ContratoBoleta ..> RegistroVoto : recordVote + consulta revoteEnabled (VOTAR-341/346)
+    ContratoBoleta ..> RegistroVoto : recordVote(candidatoIds[]) + revoteEnabled (VOTAR-341/346/474)
     VistaAuditoria ..> RegistroVoto : stats / tallies / recibos (VOTAR-350)
     VistaAuditoria ..> AlmacenRaizMerkle : getElectionState
     PadronElectoral ..> PublicacionMerkle : registra publicación
@@ -569,11 +572,11 @@ classDiagram
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
-    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712.\nVOTAR-346: delega VoteCast a VoteRegistry.\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
+    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712 domain v2.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ncastSignedVote firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
     note for RegistroIntentoSufragio "VOTAR-328/451/452: claveIntento opaca\n(JWT sub hash). votosObjetivo sync idempotente\ntras cast on-chain; lock pessimista evita doble consumo."
     note for CooldownAnchor "VOTAR-449/452: ancla unlockAt en reloj del nodo;\npersiste en localStorage por (idEleccion, votanteScope).\nSobrevive cierre de pestaña; no reinicia countdown espurio."
     note for VistaAuditoria "VOTAR-453: merkleRootConsistente compara\nraíz on-chain vs PADRON_ELECTORAL.hash_padron.\npoliticaRevoto=DISABLED si !revoteEnabled."
-    note for RegistroVoto "VOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
+    note for RegistroVoto "VOTAR-474: recordVote(candidatoIds[]) incrementa\ncada tally; 1 VoteCast/boleta + VoteUpdated por id.\nVOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
     note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). VOTAR-367: getElectionState +\nmerkleRootStore para ficha técnica pública.\nverifyReceipt usa ancla anónima (nullifier)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
     note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."

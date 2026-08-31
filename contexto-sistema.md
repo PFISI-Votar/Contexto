@@ -1,7 +1,7 @@
 # VOTAR — Contexto del Sistema para Consulta IA
 
 > Documento de referencia rápida para agentes IA. Sintetiza toda la documentación del proyecto.
-> Última actualización: 2026-08-26 | Equipo: Five Stack | UTN FRVM
+> Última actualización: 2026-08-31 | Equipo: Five Stack | UTN FRVM
 
 ---
 

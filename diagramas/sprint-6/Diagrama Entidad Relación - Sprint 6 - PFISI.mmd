@@ -6,6 +6,8 @@
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
 %% Evolución Sprint 6:
+%% - VOTAR-474: escrutinio multi-categoría on-chain (candidateIds[] en VoteRegistry;
+%%   eventos VoteCast + VoteUpdated por id) — sin cambio de entidades off-chain
 %% - VOTAR-459: visibilidad configurable de solapas del Dashboard Público en CONFIGURACION_COMICIO
 %% Hereda Sprint 5: VOTAR-322 (ARCHIVADA), VOTAR-347 (pausada/pausada_en), VOTAR-374/375 (CONFIGURACION_SISTEMA), VOTAR-328/451/452 (REGISTRO_INTENTO_SUFRAGIO)
 %% ============================================================================
@@ -279,7 +281,7 @@ erDiagram
         int numero_bloque "Bloque de inclusión"
         datetime marca_tiempo "Timestamp del bloque"
         string contrato_etiqueta "BallotContract | VoteRegistry | MerkleRootStore"
-        string nombre_evento "SignedVoteCast, VoteCast, RootPublished..."
+        string nombre_evento "SignedVoteCast, VoteCast, VoteUpdated, RootPublished..."
         string descripcion_legible "Texto público sin nullifier/voterHash"
         int log_index "Orden estable dentro del bloque"
     }

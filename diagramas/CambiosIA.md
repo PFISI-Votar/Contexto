@@ -4,6 +4,23 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-31] — Sprint 6 — VOTAR-474 escrutinio multi-categoría on-chain
+
+- **Tipo de cambio**: Diagrama de clases + C4 + secuencia de resultados + nota DER en `diagramas/sprint-6/` (norma: no editar in-place sprints anteriores)
+- **Motivo**:
+  - Bug: `VoteRegistry` solo almacenaba un `candidateId` por `voterHash`; el escrutinio público no incrementaba tallies de categorías no-primarias
+  - Fix: `recordVote` / `castSignedVote` aceptan `candidateIds[]` (EIP-712 domain v2); un `VoteCast` por boleta + `VoteUpdated` por cada id
+- **Cambios específicos**:
+  1. Clases: `ContratoBoleta.castSignedVote(..., candidatoIds int[])`; `RegistroVoto.recordVote(..., candidatoIds int[])` + `MAX_CANDIDATES_PER_BALLOT`; notas VOTAR-474
+  2. C4: descripciones de `BallotContract` / `VoteRegistry` y relación `recordVote(candidateIds[])`
+  3. Secuencia VOTAR-364: `castSignedVote (candidateIds[])` → `VoteCast + VoteUpdated×N`
+  4. DER: `TRANSACCION_BLOCKCHAIN.nombre_evento` incluye `VoteUpdated` (índice on-chain; sin entidades off-chain nuevas)
+  5. `contexto-sistema.md`: flujo de sufragio y política LAST_WINS con `candidateIds[]`
+- **User Stories relacionadas**: VOTAR-474
+- **Archivos**: `diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `diagramas/sprint-6/votar.c4`, `diagramas/sprint-6/secuencia-visualizacion-resultados-votar-364.mmd`, `diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `contexto-sistema.md`
+
+---
+
 ## [2026-08-27] — Sprint 6 — VOTAR-466 persistencia de imágenes en PostgreSQL
 
 - **Tipo de cambio**: DER + Diagrama de clases + C4 de `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; carpeta Sprint 6 tomada como base desde `feature/VOTAR-459-fix-visibilidad-de-dashboard-publico`, ver entrada anterior, para evitar divergencia al mergear ambas ramas)
