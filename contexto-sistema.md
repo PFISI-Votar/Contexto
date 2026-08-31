@@ -150,9 +150,9 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
      b. MerkleProof.verify(proof, root, leaf) ← verifica padrón; revierte `InvalidMerkleProof` si falla (US-339)
      c. ECDSA.recover(payload, sig) ← verifica Firma Digital (Ley 25.506)
      d. Valida política re-voto (RevoteConfig)
-     e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS)
+     e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS) con `candidateIds[]` (VOTAR-474)
      f. TallyContract: actualiza contadores por delta
-     g. Emite VoteCast(electionId, nullifier, candidateId, isOverwrite)
+     g. Emite VoteCast(electionId, nullifier, candidateIdPrimario, isOverwrite) + VoteUpdated por cada id
   8. Votante recibe recibo criptográfico (hash tx + código verificación)
 ```
 
@@ -324,7 +324,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **La clave privada de la billetera efímera NUNCA se persiste** en ningún storage (ni BD ni blockchain). Se genera en Web Crypto API del navegador, firma el voto y se destruye.
 - **Merkle Proofs NO se almacenan en BD**. Son calculados en tiempo de ejecución por el backend bajo demanda autenticada.
 - **VOTO no tiene FK a VOTANTE**. El voto "nace huérfano de identidad" (diseño intencional Ley 25.326).
-- **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
+- **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe los `candidateIds[]` del nullifier en cada re-voto mientras el comicio esté abierto (VOTAR-474). Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
 - **Diagramas de referencia**: ver `Contexto/diagramas/sprint-6/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
