@@ -4,6 +4,18 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-03] — Sprint 6 — VOTAR-474 feedback: multi-selección por categoría en BUD
+
+- **Tipo de cambio**: `contexto-sistema.md` (sin diagramas nuevos)
+- **Motivo**: Feedback de QA — el BUD no permitía elegir N candidatos dentro de una categoría multi-banca (`cantidadCargos > 1`) ni había copy claro de configuración
+- **Cambios específicos**:
+  1. `CATEGORIA.cantidadCargos` documentado como tope de postulantes **y** de selecciones del votante
+  2. Alineado con boleta digital (`cantidadCargos` en API) + BUD multi-select + merge de diseño VOTAR-464
+- **User Stories relacionadas**: VOTAR-474 (feedback), VOTAR-464
+- **Archivos**: `contexto-sistema.md`
+
+---
+
 ## [2026-08-31] — Sprint 6 — VOTAR-474 escrutinio multi-categoría on-chain
 
 - **Tipo de cambio**: Diagrama de clases + C4 + secuencia de resultados + nota DER en `diagramas/sprint-6/` (norma: no editar in-place sprints anteriores)

@@ -169,7 +169,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `ELECCION` | Comicio: nombre, descripción, fechas, estado (`BORRADOR→CONFIGURADA→ABIERTA→CERRADA→ESCRUTADA`) |
 | `CONFIGURACION_COMICIO` | Parámetros: voto múltiple, max intentos, intervalo mínimo, política de cómputo |
 | `BOLETA` | Boleta electoral vinculada a una elección |
-| `CATEGORIA` | Cargo/categoría dentro de la boleta (ej. Presidente, Vocales) |
+| `CATEGORIA` | Cargo/categoría dentro de la boleta (ej. Presidente, Vocales). `cantidadCargos` limita postulantes por lista y selecciones del votante en BUD (VOTAR-474) |
 | `LISTA` | Agrupación/lista electoral |
 | `CANDIDATO` | Candidato dentro de una lista y categoría |
 | `PADRON_ELECTORAL` | Metadatos del padrón (hash SHA-256, total habilitados, estado) |
