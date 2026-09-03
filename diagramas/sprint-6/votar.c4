@@ -252,6 +252,10 @@ model {
         technology "NestJS Service / sharp / PostgreSQL bytea"
         description "Reemplaza el disco local del contenedor (/uploads), que perdía archivos al recrear el contenedor mientras la fila de dominio persistía. Normaliza y optimiza a WebP con presupuesto de tamaño por tipo (candidato-foto, lista-logo, logo-institucional); persiste los bytes en imagen_electoral. GET /imagenes/:idImagen sirve el contenido, público, con ETag/Cache-Control immutable"
       }
+      entidadFirmas = component "Entidad de Firmas Digitales — Tercero de Confianza (VOTAR-377)" {
+        technology "NestJS Service / ethers v6 EIP-712 / VALIDATOR_PRIVATE_KEY"
+        description "Certifica con una firma institucional ECDSA (Ley 25.506) que el emisor de un sufragio pertenece al padrón habilitado, sin poder vincular su identidad con la selección (Blind Signing). Esquema de dos fases: FASE 1 autenticada (JWT votante) — valida padrón y registra keccak256(secreto) en credencial_validacion, sin votante_hash; FASE 2 anónima (sin cookie) — revela el secreto + payload completo y devuelve la firma EIP-712 Validation. BallotContract rechaza on-chain todo voto sin esta firma. Clave dedicada, distinta de la operativa (PRIVATE_KEY)"
+      }
       rpcFailover = component "Cliente RPC con Failover (VOTAR-386)" {
         technology "ethers v6 / viem FallbackProvider"
         description "Rotación Infura→Alchemy→QuickNode ante 429, timeout >15s o error de red. Log de failover + verificación skew de bloque"
@@ -543,6 +547,11 @@ model {
   votar.api.pausaComicioService -> votar.api.rpcFailover "pause()/unpause() Ballot + Registry"
   votar.api.actaAperturaService -> votar.api.dataAccess "Lee padrón, oferta, configuracion_sistema"
   votar.api.electoralImageService -> votar.api.dataAccess "CRUD bytea en imagen_electoral (VOTAR-466)"
+  votar.api.entidadFirmas -> votar.api.dataAccess "credencial_validacion (commit, uso único) + emision_credencial (contador por hoja) — VOTAR-377"
+  votar.api.entidadFirmas -> votar.api.merkleBuilder "Valida pertenencia al padrón del votante autenticado (FASE 1)"
+  votar.api.entidadFirmas -> votar.api.auditLogger "CREDENCIAL_VALIDACION_EMITIDA (votante ofuscado) / FIRMA_VALIDACION_EMITIDA (ANONIMO)"
+  votar.bud.cryptoEngine -> votar.api.apiRouter "POST /elecciones/:id/validacion/credencial { commit } (FASE 1, JWT)" { technology "HTTPS / JSON" }
+  votar.bud.cryptoEngine -> votar.api.apiRouter "POST /validacion/elecciones/:id/firma { secreto, payload } (FASE 2, sin cookie SSO)" { technology "HTTPS / JSON, credentials:omit" }
   votar.api.faucetService -> votar.api.rpcFailover "Transfer SepoliaETH a TEST_WALLET_ADDRESSES (VOTAR-387)"
   votar.api.revotePolicyService -> votar.api.dataAccess "UPSERT registro_intento_sufragio (VOTAR-451/452)"
   votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/registrar-consumo { votosObjetivo }" { technology "JSON/HTTPS" }
@@ -571,7 +580,10 @@ model {
 
   votar.contracts.ballotContract -> votar.contracts.merkleRootStore "Consulta Merkle Root + ElectionState/endTime en castVote()/castSignedVote()"
   votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "MerkleProof.verify(proof, root, leaf): valida padrón"
-  votar.contracts.ballotContract -> votar.contracts.ozECDSA "ECDSA.recover(payload, sig): verifica Firma Digital (Ley 25.506)"
+  votar.contracts.ballotContract -> votar.contracts.ozECDSA "ECDSA.recover: verifica la firma EIP-712 del votante Y la firma institucional de la Entidad de Firmas (VOTAR-377). Ley 25.506"
+  votar.contracts.ballotContract -> votar.contracts.votarAccessControl "hasRole(VALIDATOR_ROLE, signer): rechaza voto sin firma institucional válida (VOTAR-377 — MissingValidatorSignature / InvalidValidatorSignature)"
+  votar.api.entidadFirmas -> votar.contracts.ballotContract "verifyingContract del dominio EIP-712 `Validation` (por comicio)"
+  votar.contracts.electionFactory -> votar.contracts.ballotContract "grant VALIDATOR_ROLE a la Entidad de Firmas en createElection (VOTAR-377)"
   votar.contracts.ballotContract -> votar.contracts.voteRegistry "recordVote(electionId, voterHash, candidateId) — VOTAR-346; LAST_WINS en tallies del registry"
   votar.contracts.ballotContract -> votar.contracts.tallyContract "Futuro: delta de escrutinio dedicado (hoy tallies viven en VoteRegistry)"
   votar.contracts.ballotContract -> votar.contracts.ozPausable "whenNotPaused modifier en castVote()/castSignedVote()"

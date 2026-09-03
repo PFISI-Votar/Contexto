@@ -383,13 +383,38 @@ erDiagram
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
+    %% ENTIDAD DE FIRMAS DIGITALES — Tercero de Confianza (VOTAR-377, Ley 25.506)
+    %% Esquema commit/reveal de dos fases. CREDENCIAL_VALIDACION y
+    %% EMISION_CREDENCIAL NO comparten columna ni FK: el backend no puede
+    %% reconstruir qué credencial anónima pertenece a qué votante. Timestamps
+    %% redondeados al bucket de 5 min (k-anonimato temporal).
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    CREDENCIAL_VALIDACION {
+        uuid id_credencial PK "Identificador de la credencial"
+        int id_eleccion FK "Elección asociada"
+        string commit_credencial UK "keccak256(secreto) — 0x + 64 hex. Único. FASE 1 sólo envía este valor"
+        string estado "EMITIDA | CONSUMIDA | EXPIRADA (uso único, UPDATE condicional atómico en FASE 2)"
+        datetime expira_en "Instante (bucket 5 min) tras el cual ya no puede canjearse"
+        datetime emitida_en "Alta (bucket 5 min)"
+    }
+
+    EMISION_CREDENCIAL {
+        uuid id_emision PK "Identificador"
+        int id_eleccion FK "Elección asociada"
+        string hash_hoja "keccak256(dni:email) — mismo valor que PADRON_VOTANTE.hash_hoja. Nunca se nombra votante_hash (invariante VOTAR-379)"
+        smallint credenciales_emitidas "Contador; tope generoso = max_votos_por_votante * 3. NO es anti-doble-voto (ese es el nullifier)"
+        datetime ultima_emision_en "Última emisión (bucket 5 min)"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
     %% AUDITORÍA Y TRAZABILIDAD
     %% ═══════════════════════════════════════════════════════════════════════
 
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA"
         datetime timestamp "Timestamp UTC del evento"
         string actor "Operador ofuscado (SHA-256+salt). ANONIMO para VOTO_EMITIDO — VOTAR-379/370"
         string descripcion "Descripción del evento (sin IP en claro)"
@@ -492,6 +517,12 @@ erDiagram
 
     %% --- Registro de nullifiers (motor off-chain legacy) ---
     ELECCION ||--o{ REGISTRO_NULLIFIER : "registra nullifiers"
+
+    %% --- Entidad de Firmas Digitales (VOTAR-377) ---
+    %% CREDENCIAL_VALIDACION y EMISION_CREDENCIAL cuelgan de ELECCION pero NO se
+    %% relacionan entre sí: la desvinculación identidad↔credencial es estructural.
+    ELECCION ||--o{ CREDENCIAL_VALIDACION : "emite credenciales anónimas"
+    ELECCION ||--o{ EMISION_CREDENCIAL : "cuenta emisiones por votante"
 
     %% --- Auditoría y trazabilidad ---
     ELECCION ||--o{ AUDIT_LOG : "registra eventos"
