@@ -117,15 +117,15 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Contrato | Rol |
 |---|---|
 | `ElectionFactory.sol` | Despliega conjunto de contratos por comicio. Patrón UUPS Proxy Factory |
-| `BallotContract.sol` | Orquesta `castVote` / `castSignedVote`: Merkle + EIP-712; delega `recordVote` a `VoteRegistry` (VOTAR-346). Rechaza `ElectionClosed` (VOTAR-321). Patrón CEI + `whenNotPaused` |
+| `BallotContract.sol` | Orquesta `castSignedVote(SignedVoteInput, MerkleProof, firmaVotante, validatorSignature)`: Merkle + EIP-712; delega `recordVote` a `VoteRegistry` (VOTAR-346). Rechaza `ElectionClosed` (VOTAR-321). **VOTAR-377**: exige `validatorSignature` de un holder de `VALIDATOR_ROLE` (Entidad de Firmas Digitales) o revierte `MissingValidatorSignature`/`InvalidValidatorSignature`. Se eliminó `castVote` legacy. Patrón CEI + `whenNotPaused` |
 | `VoteRegistry.sol` | Estado canónico por `voterHash` (nullifier). `VoteCast` indexado; tallies LAST_WINS; contador `_totalRevotes`; views VOTAR-350 + VOTAR-329 (`getRevoteStats`) |
 | `TallyContract.sol` | Contadores incrementales por candidato (aspiracional; tallies actuales viven en VoteRegistry) |
 | `AuditViewContract.sol` | Fachada `view` sin gas (VOTAR-350/329): estado, participación, votos por candidato, verificación de recibo anónimo, **estadísticas de re-voto** (`getRevoteStats → totalRevotes, uniqueVoters, overwriteRatio`) |
 | `MerkleRootStore.sol` | Almacena y versiona Merkle Roots publicadas por la autoridad |
 | OZ: `MerkleProof.sol` | Verifica pertenencia al árbol (OpenZeppelin v5) |
-| OZ: `ECDSA.sol` | Recupera firmante del payload del voto (Ley 25.506) |
-| OZ: `AccessControl.sol` | RBAC vía `VotarAccessControl`: `DEFAULT_ADMIN_ROLE`, `PAUSER_ROLE`, `MERKLE_UPDATER_ROLE`, `BALLOT_ROLE` (US-349) |
-| OZ: `Pausable.sol` | Circuit breaker en `castVote()` |
+| OZ: `ECDSA.sol` | Recupera dos firmantes del payload del voto: la clave efímera del votante (VOTAR-357) y la Entidad de Firmas Digitales (VOTAR-377). Ley 25.506 |
+| OZ: `AccessControl.sol` | RBAC vía `VotarAccessControl`: `DEFAULT_ADMIN_ROLE`, `PAUSER_ROLE`, `MERKLE_UPDATER_ROLE`, `BALLOT_ROLE` (US-349), `VALIDATOR_ROLE` (VOTAR-377 — rotable por el Multisig) |
+| OZ: `Pausable.sol` | Circuit breaker en `castSignedVote()` (`whenNotPaused`) |
 
 ---
 
@@ -141,22 +141,33 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
   2. Backend valida JWT, ejecuta identityDecoupler
   3. merkleBuilder genera MerkleProof individual (off-chain)
   4. BUD recibe MerkleProof
+  4b. VOTAR-377 FASE 1 (autenticada): BUD genera secreto s (sólo RAM) y envía
+      commit=keccak256(s) → EntidadFirmasController valida padrón y registra el
+      commit en credencial_validacion (sin votante_hash). No ve la selección.
   5. cryptoEngine genera billetera efímera ECC (Web Crypto API)
-     → firma sufragio ECDSA
+     → firma sufragio EIP-712 (clave efímera)
      → calcula nullifier = H(clavePublica, idEleccion)
-  6. blockchainClient envía castVote(payload, sig, proof) → RPC → BallotContract
+  5b. VOTAR-377 FASE 2 (ANÓNIMA, credentials:'omit', sin cookie): BUD revela s +
+      payload completo → EntidadFirmasPublicController canjea la credencial (uso
+      único) y devuelve validatorSignature (EIP-712 `Validation`, VALIDATOR_ROLE).
+      El backend nunca ve identidad y selección en la misma request (Blind Signing).
+  6. blockchainClient envía castSignedVote(vote, proof, firmaVotante,
+     validatorSignature) → RPC → BallotContract
   7. BallotContract:
      a. Consulta MerkleRoot activa
+     a2. validatorSignature ausente → revierte `MissingValidatorSignature` (VOTAR-377, UAT-01)
+     a3. ECDSA.recover(Validation digest) ∉ VALIDATOR_ROLE → revierte
+         `InvalidValidatorSignature` (firmante no autorizado o payload alterado — UAT-03)
      b. MerkleProof.verify(proof, root, leaf) ← verifica padrón; revierte `InvalidMerkleProof` si falla (US-339)
-     c. ECDSA.recover(payload, sig) ← verifica Firma Digital (Ley 25.506)
+     c. ECDSA.recover(payload, firmaVotante) ← verifica Firma Digital del votante (Ley 25.506)
      d. Valida política re-voto (RevoteConfig)
      e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS) con `candidateIds[]` (VOTAR-474)
      f. TallyContract: actualiza contadores por delta
-     g. Emite VoteCast(electionId, nullifier, candidateIdPrimario, isOverwrite) + VoteUpdated por cada id
+     g. Emite SignedVoteCast(electionId, nullifier, selectionHash, signer) + VoteCast/VoteUpdated (candidateIds[]) vía VoteRegistry
   8. Votante recibe recibo criptográfico (hash tx + código verificación)
 ```
 
-**Invariante clave:** En ningún momento existe una FK persistente entre la identidad del votante y su voto. La clave privada de la billetera efímera **nunca se persiste** (se genera en el navegador y se destruye post-firma).
+**Invariante clave:** En ningún momento existe una FK persistente entre la identidad del votante y su voto. La clave privada de la billetera efímera **nunca se persiste** (se genera en el navegador y se destruye post-firma). El secreto de la credencial de validación (VOTAR-377) vive sólo en RAM y se destruye tras canjearlo; `credencial_validacion` y `emision_credencial` no comparten columna ni FK, y la `validatorSignature` on-chain no contiene `voterLeaf` — sólo prueba "un integrante del padrón votó".
 
 ---
 
@@ -217,7 +228,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Ley | Impacto |
 |---|---|
 | **Ley 25.326** – Protección de Datos Personales | Prohíbe almacenar PII en blockchain. Arquitectura resuelve con hashes y billeteras efímeras (disociación de datos nativa) |
-| **Ley 25.506** – Firma Digital | Voto instrumentado como Firma Digital (ECDSA). Equivale a firma manuscrita. Presunción de autoría e integridad |
+| **Ley 25.506** – Firma Digital | Voto instrumentado como Firma Digital (ECDSA). Equivale a firma manuscrita. Presunción de autoría e integridad. **VOTAR-377**: además, una "Entidad de Firmas Digitales" (Tercero de Confianza) estampa una firma institucional sobre el payload certificando que el emisor pertenece al padrón; el contrato la exige on-chain. El auditor legal reconstruye la presunción de integridad y autoría del conjunto de votos legítimos recuperando esa firma de cada `SignedVoteCast` |
 | **Ley 24.521** – Educación Superior | Cumplimiento para uso en centros de estudiantes universitarios |
 | **Ley 23.551** – Asociaciones Sindicales | Dashboard de escrutinio satisface requisitos del Ministerio de Trabajo |
 | ISO/IEC 27000 | Referencia para seguridad de infraestructura crítica |
@@ -270,7 +281,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | R2 | Capacitación insuficiente en Solidity/ECC/OAuth2 | Plan individual de capacitación por área desde inicio |
 | R3 | Inestabilidad de Sepolia / restricciones de faucet | Entornos locales Hardhat/Ganache como respaldo |
 | R4 | CEUTI no valida formalmente el uso | Demo en entorno simulado como alternativa |
-| R5 | Vulneración del SSO → Merkle proofs ilegítimas | Validación de estado de certificado en tiempo real + monitoreo |
+| R5 | Vulneración del SSO → Merkle proofs ilegítimas | Validación de estado de certificado en tiempo real + monitoreo. **VOTAR-377**: mitigado — el `castSignedVote` sin control de autorización quedó cerrado; ahora el contrato exige la firma de la Entidad de Firmas Digitales (holder de `VALIDATOR_ROLE`), que sólo el backend produce tras validar el padrón |
 
 ---
 
@@ -378,6 +389,8 @@ Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **4
 | Ticket | Estado | Descripción |
 |---|---|---|
 | VOTAR-459 | Implementado | Visibilidad configurable de solapas del Dashboard Público (Resultados/Participación/Re-voto/Transacciones), enforcement 403 en backend |
+| VOTAR-466 | Implementado | Persistencia de imágenes electorales en PostgreSQL (`imagen_electoral` bytea; `GET /imagenes/:id`) |
+| VOTAR-388 | En revisión | Respaldos diarios cifrados AES-256-GCM de PostgreSQL (`src/backups/`, retención 30d, offsite opcional, alertas mail) |
 
 ### Sprint 5 — entregas principales
 

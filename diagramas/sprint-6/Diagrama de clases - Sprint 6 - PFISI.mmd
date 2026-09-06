@@ -9,6 +9,9 @@
 %% - VOTAR-459: visibilidad configurable de solapas del Dashboard Público
 %%   (ConfiguracionComicioService.obtener/guardarVisibilidadDashboard,
 %%   SeccionDashboardVisibleGuard) — sin nuevas clases de dominio en este modelo
+%% - VOTAR-466: ElectoralImageService + ImagenElectoral (bytea en PostgreSQL)
+%% - VOTAR-388: BackupService / BackupScheduler — pg_dump cifrado AES-256-GCM,
+%%   retención 30d, copia remota opcional y alerta mail ante fallo
 %% Hereda Sprint 5:
 %% - VOTAR-322: archivado lógico CERRADA → ARCHIVADA (solo PostgreSQL; cero gas)
 %% - VOTAR-347/348: pausa/reanudación de emergencia (Pausable + pausada off-chain)
@@ -313,11 +316,12 @@ classDiagram
 
     class ContratoBoleta {
         <<contrato inteligente>>
-        +castVote(eleccionId int, hojaVotante Hash, proof MerkleProof) void
-        +castSignedVote(... nullifier Hash, selectionHash Hash, firma bytes, candidatoIds int[]) void
+        +castSignedVote(vote SignedVoteInput, proof MerkleProof, firma bytes, validatorSignature bytes) void
         +haVotado(eleccionId int, hojaVotante Hash) boolean
         -verificarMerkleProof(eleccionId int, hojaVotante Hash, proof MerkleProof) void
         -enforceRevotePolicy(eleccionId int, nullifier Hash) void
+        -_assertValidVoteSignature(vote SignedVoteInput, firma bytes) void
+        -_assertValidValidatorSignature(vote SignedVoteInput, validatorSignature bytes) void
     }
 
     class RegistroVoto {
@@ -415,6 +419,27 @@ classDiagram
         +fechaCreacion DateTime
     }
 
+    %% VOTAR-377 — credenciales anónimas de la Entidad de Firmas Digitales.
+    %% Sin relación entre sí: la desvinculación identidad↔credencial es estructural.
+    class CredencialValidacion {
+        <<entidad TypeORM>>
+        +idCredencial String
+        +idEleccion int
+        +commitCredencial Hash
+        +estado EstadoCredencialValidacion
+        +expiraEn DateTime
+        +emitidaEn DateTime
+    }
+
+    class EmisionCredencial {
+        <<entidad TypeORM>>
+        +idEmision String
+        +idEleccion int
+        +hashHoja Hash
+        +credencialesEmitidas int
+        +ultimaEmisionEn DateTime
+    }
+
     class ElectoralImageService {
         <<servicio NestJS>>
         +saveImage(file Multer.File, kind ElectoralImageKind) String
@@ -432,6 +457,32 @@ classDiagram
         +obtenerEstado(idEleccion int, claveIntento String) EstadoRevoto
         +registrarConsumo(idEleccion int, claveIntento String, votosObjetivo int) EstadoRevoto
     }
+
+    %% ═══ Entidad de Firmas Digitales — Tercero de Confianza (VOTAR-377) ═══
+
+    class CredencialValidacionService {
+        <<servicio NestJS>>
+        +emitir(idEleccion int, votanteHash Hash, commit Hash, ipOrigen String) CredencialEmitida
+        +consumir(idEleccion int, secreto Hash) void
+    }
+
+    class FirmaInstitucionalService {
+        <<servicio NestJS — clave dedicada VALIDATOR_PRIVATE_KEY>>
+        +firmarValidacion(idEleccion int, message ValidationMessage) FirmaValidacion
+        +obtenerDireccionValidador() String
+    }
+
+    class EntidadFirmasService {
+        <<servicio NestJS — orquesta FASE 2 anónima>>
+        +certificarSufragio(idEleccion int, dto SolicitarFirmaValidacionDto) FirmaValidacionResponse
+        +obtenerClavePublica() ClavePublicaValidador
+    }
+
+    CredencialValidacion "1" --o "0..*" CredencialValidacionService : gestiona
+    EmisionCredencial "1" --o "0..*" CredencialValidacionService : cuenta
+    EntidadFirmasService ..> CredencialValidacionService : consume credencial (uso único)
+    EntidadFirmasService ..> FirmaInstitucionalService : firma EIP-712 Validation
+    FirmaInstitucionalService ..> ContratoBoleta : verifyingContract del dominio EIP-712
 
     class ArchivarComicioService {
         <<servicio NestJS>>
@@ -465,6 +516,20 @@ classDiagram
     class FaucetService {
         <<servicio NestJS — cron>>
         +checkAndTopUpWallets() void
+    }
+
+    class BackupService {
+        <<servicio NestJS — VOTAR-388>>
+        +runBackup() BackupResult
+        +restoreBackup(encryptedPath String, targetDatabase String) RestoreResult
+        +assertIntegrity(encryptedPath String) String
+        +pruneExpiredBackups(backupDir String) String[]
+    }
+
+    class BackupScheduler {
+        <<scheduler NestJS — gated BACKUP_ENABLED>>
+        +onModuleInit() void
+        +onModuleDestroy() void
     }
 
     class TransaccionBlockchain {
@@ -516,6 +581,9 @@ classDiagram
     ConfiguracionSistema ..> ElectoralImageService : logoUrl (saveImage/deleteIfManagedUrl)
     RpcFailoverService ..> ContratoBoleta : eth_call / sendTransaction
     FaucetService ..> RpcFailoverService : balance + transfer SepoliaETH
+    BackupScheduler ..> BackupService : tick diario (BACKUP_HOUR)
+
+    note for BackupService "VOTAR-388: pg_dump → AES-256-GCM → src/backups/*.dump.enc\n+ sidecar .sha256. Plain dump se elimina al terminar.\nBACKUP_REMOTE_DIR opcional (offsite); retención ≥30d.\nFallo (ENOSPC, integridad) → mail crítico a ALERT_EMAIL_TO.\nCLI: npm run db:backup / db:restore."
 
     TransaccionesPublicService --> TransaccionBlockchainService : listar
     TransaccionBlockchainService ..> ContratoBoleta : getTransactionReceipt / parse
@@ -572,7 +640,7 @@ classDiagram
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
-    note for ContratoBoleta "VOTAR-339/357: Merkle + EIP-712 domain v2.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ncastSignedVote firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
+    note for ContratoBoleta "VOTAR-339/357/377: Merkle + EIP-712 + validatorSignature.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ndigest EIP-712 domain v2 firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
     note for RegistroIntentoSufragio "VOTAR-328/451/452: claveIntento opaca\n(JWT sub hash). votosObjetivo sync idempotente\ntras cast on-chain; lock pessimista evita doble consumo."
     note for CooldownAnchor "VOTAR-449/452: ancla unlockAt en reloj del nodo;\npersiste en localStorage por (idEleccion, votanteScope).\nSobrevive cierre de pestaña; no reinicia countdown espurio."
     note for VistaAuditoria "VOTAR-453: merkleRootConsistente compara\nraíz on-chain vs PADRON_ELECTORAL.hash_padron.\npoliticaRevoto=DISABLED si !revoteEnabled."

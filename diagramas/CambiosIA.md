@@ -28,6 +28,27 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-03] — Sprint 6 — VOTAR-377 Validación y Compliance Normativo mediante Entidad de Firmas Anónimas
+
+- **Tipo de cambio**: DER + Diagrama de clases + C4 + nuevo diagrama de secuencia de `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; se continúa sobre la carpeta Sprint 6 ya existente)
+- **Motivo**:
+  - `BallotContract.castSignedVote` no tenía **ningún control de autorización**: `external whenNotPaused` sin `onlyRole`, y la única firma verificada era la del propio votante (`ECDSA.recover(...) == expectedSigner` con `expectedSigner` provisto por el llamador). Probaba que el payload lo firmó *alguien*, no que ese alguien estuviera habilitado. Cualquiera con una Merkle proof podía votar salteando el backend (riesgo R5 del Project Charter — vulneración del SSO → Merkle proofs ilegítimas).
+  - La US introduce un Tercero de Confianza que certifica con una firma institucional ECDSA (Ley 25.506) la pertenencia al padrón, y el contrato rechaza toda transacción que no la traiga.
+  - Tensión de diseño: el AC-5 exige que la firma cubra la totalidad del payload (incluida la selección partidaria), mientras el AC-3 exige que el backend **no pueda vincular identidad ↔ selección** (Ley 25.326, invariante lineamientos §7.1, ya cerrado en VOTAR-379). Se resuelve con un **esquema commit/reveal de dos fases con credencial anónima**: la identidad se valida en una request autenticada que no ve la selección; la firma se emite en una request anónima (sin cookie, `credentials:'omit'`, como VOTAR-373/379) que no ve la identidad.
+  - Se verificó explícitamente la desvinculación: `credencial_validacion` y `emision_credencial` no comparten columna ni FK entre sí; `credencial_validacion` no guarda `votante_hash`; los timestamps se redondean al bucket de 5 minutos para que tampoco correlacionen. La `validatorSignature` que queda en la calldata de Sepolia excluye deliberadamente `voterLeaf`: sólo prueba "un integrante del padrón votó".
+  - La credencial **no** es el anti-doble-voto (ese sigue siendo el nullifier + `_enforceRevotePolicy` on-chain); es un voucher de elegibilidad de un solo uso.
+- **Cambios específicos**:
+  1. DER: nuevas entidades `CREDENCIAL_VALIDACION` (`id_credencial` uuid PK, `id_eleccion`, `commit_credencial` UK, `estado` EMITIDA|CONSUMIDA|EXPIRADA, `expira_en`, `emitida_en`) y `EMISION_CREDENCIAL` (`id_emision` uuid PK, `id_eleccion`, `hash_hoja`, `credenciales_emitidas` smallint, `ultima_emision_en`). Ambas cuelgan de `ELECCION` pero **sin relación entre sí** (nota explícita en el DER). `AUDIT_LOG.tipo_evento` suma `CREDENCIAL_VALIDACION_EMITIDA` y `FIRMA_VALIDACION_EMITIDA`.
+  2. Diagrama de clases: nuevos servicios `CredencialValidacionService` (`emitir`, `consumir`), `FirmaInstitucionalService` (`firmarValidacion`, `obtenerDireccionValidador`), `EntidadFirmasService` (`certificarSufragio`, `obtenerClavePublica`); nuevas entidades `CredencialValidacion` / `EmisionCredencial`. `ContratoBoleta` (`BallotContract`): se elimina `castVote` legacy; `castSignedVote` pasa a `(SignedVoteInput vote, MerkleProof, bytes firma, bytes validatorSignature)` y se agrega `_assertValidValidatorSignature`.
+  3. C4: nuevo componente `entidadFirmas` dentro del contenedor `votar.api`, con relaciones hacia `dataAccess`, `merkleBuilder`, `auditLogger` y hacia `votar.contracts.ballotContract` (verifyingContract del dominio EIP-712). Se agrega `ballotContract → votarAccessControl` (`hasRole(VALIDATOR_ROLE, signer)`) y `electionFactory → ballotContract` (grant de `VALIDATOR_ROLE` en `createElection`). Se actualiza la relación `ballotContract → ozECDSA` (ahora recupera dos firmas: la del votante y la institucional).
+  4. Nuevo `diagramas/sprint-6/secuencia-validacion-firmas-votar-377.mmd`: FASE 1 autenticada, FASE 2 anónima y enforcement on-chain, con la trazabilidad UAT-01..04.
+  5. `contexto-sistema.md` §4.4 (`VALIDATOR_ROLE`), §5 (flujo de voto con las dos fases), §8 (Ley 25.506), §12 (R5 mitigada).
+- **User Stories relacionadas**: VOTAR-377 (Compliance Ley de Firma Digital), relacionada con VOTAR-354 (Merkle proof autenticada), VOTAR-357 (firma local de boleta), VOTAR-379 (desvinculación identidad↔voto), VOTAR-382 (gestor de secretos — cierre del riesgo residual de `VALIDATOR_PRIVATE_KEY` en env).
+- **PRs**: blockchain (BallotContract + ElectionFactory + tests + deploy), back (módulo `entidad-firmas` + migración + audit), front (integración BUD + ABIs), Contexto (diagramas).
+- **Archivos**: `Contexto/diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/votar.c4`, `Contexto/diagramas/sprint-6/secuencia-validacion-firmas-votar-377.mmd`, `Contexto/contexto-sistema.md`
+
+---
+
 ## [2026-08-31] — Sprint 6 — VOTAR-474 escrutinio multi-categoría on-chain
 
 - **Tipo de cambio**: Diagrama de clases + C4 + secuencia de resultados + nota DER en `diagramas/sprint-6/` (norma: no editar in-place sprints anteriores)
@@ -35,13 +56,32 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
   - Bug: `VoteRegistry` solo almacenaba un `candidateId` por `voterHash`; el escrutinio público no incrementaba tallies de categorías no-primarias
   - Fix: `recordVote` / `castSignedVote` aceptan `candidateIds[]` (EIP-712 domain v2); un `VoteCast` por boleta + `VoteUpdated` por cada id
 - **Cambios específicos**:
-  1. Clases: `ContratoBoleta.castSignedVote(..., candidatoIds int[])`; `RegistroVoto.recordVote(..., candidatoIds int[])` + `MAX_CANDIDATES_PER_BALLOT`; notas VOTAR-474
+  1. Clases: `ContratoBoleta.castSignedVote` con `candidatoIds` en el digest EIP-712; `RegistroVoto.recordVote(..., candidatoIds int[])` + `MAX_CANDIDATES_PER_BALLOT`; notas VOTAR-474
   2. C4: descripciones de `BallotContract` / `VoteRegistry` y relación `recordVote(candidateIds[])`
   3. Secuencia VOTAR-364: `castSignedVote (candidateIds[])` → `VoteCast + VoteUpdated×N`
   4. DER: `TRANSACCION_BLOCKCHAIN.nombre_evento` incluye `VoteUpdated` (índice on-chain; sin entidades off-chain nuevas)
   5. `contexto-sistema.md`: flujo de sufragio y política LAST_WINS con `candidateIds[]`
 - **User Stories relacionadas**: VOTAR-474
 - **Archivos**: `diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `diagramas/sprint-6/votar.c4`, `diagramas/sprint-6/secuencia-visualizacion-resultados-votar-364.mmd`, `diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `contexto-sistema.md`
+
+---
+
+## [2026-08-31] — Sprint 6 — VOTAR-388 respaldos diarios cifrados de PostgreSQL
+
+- **Tipo de cambio**: Clases + C4 + secuencia + DER (nota) + contexto-sistema en `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; Sprint 6 ya abierto por VOTAR-459/466)
+- **Motivo**:
+  - US: como Autoridad Electoral disponer de respaldos diarios cifrados del PostgreSQL off-chain para restaurar configuración de comicios, padrón y audit log ante fallos de infraestructura
+  - Implementación en `back`: módulo `src/backups/`, scripts `npm run db:backup` / `db:restore`, scheduler gated por `BACKUP_ENABLED`
+  - No hay nuevas tablas: los artefactos son archivos `*.dump.enc` (+ sidecar SHA-256) bajo `src/backups/` y copia opcional a `BACKUP_REMOTE_DIR`
+- **Cambios específicos**:
+  1. Diagrama de clases: `BackupService`, `BackupScheduler` + nota de cifrado/retención/alertas
+  2. C4: componente `backupService`, externalSystem `backupOffsite`, relaciones pg_dump/offsite, dynamic view `backup_postgresql_flow`
+  3. Nueva secuencia `secuencia-backup-postgresql-votar-388.mmd`
+  4. DER: nota de evolución — backups fuera del modelo relacional
+  5. `contexto-sistema.md`: ticket VOTAR-388 en tabla Sprint 6
+- **User Stories relacionadas**: VOTAR-388
+- **PRs**: back #95, Contexto (esta PR)
+- **Archivos**: `diagramas/sprint-6/*`, `diagramas/CambiosIA.md`, `contexto-sistema.md`
 
 ---
 
