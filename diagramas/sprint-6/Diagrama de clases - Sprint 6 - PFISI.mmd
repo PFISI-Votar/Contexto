@@ -314,12 +314,15 @@ classDiagram
 
     class ContratoBoleta {
         <<contrato inteligente>>
-        +castVote(eleccionId int, hojaVotante Hash, proof MerkleProof, candidatoId int) void
-        +castSignedVote(... nullifier Hash, selectionHash Hash, firma bytes, candidatoId int) void
+        +castSignedVote(vote SignedVoteInput, proof MerkleProof, firma bytes, validatorSignature bytes) void
         +haVotado(eleccionId int, hojaVotante Hash) boolean
         -verificarMerkleProof(eleccionId int, hojaVotante Hash, proof MerkleProof) void
         -enforceRevotePolicy(eleccionId int, nullifier Hash) void
+        -_assertValidVoteSignature(vote SignedVoteInput, firma bytes) void
+        -_assertValidValidatorSignature(vote SignedVoteInput, validatorSignature bytes) void
     }
+
+    note for ContratoBoleta "VOTAR-377: se elimina castVote (Merkle-only legacy).\ncastSignedVote exige validatorSignature de un holder de VALIDATOR_ROLE\n(Entidad de Firmas Digitales) o revierte\nMissingValidatorSignature / InvalidValidatorSignature."
 
     class RegistroVoto {
         <<contrato inteligente>>
@@ -415,6 +418,27 @@ classDiagram
         +fechaCreacion DateTime
     }
 
+    %% VOTAR-377 — credenciales anónimas de la Entidad de Firmas Digitales.
+    %% Sin relación entre sí: la desvinculación identidad↔credencial es estructural.
+    class CredencialValidacion {
+        <<entidad TypeORM>>
+        +idCredencial String
+        +idEleccion int
+        +commitCredencial Hash
+        +estado EstadoCredencialValidacion
+        +expiraEn DateTime
+        +emitidaEn DateTime
+    }
+
+    class EmisionCredencial {
+        <<entidad TypeORM>>
+        +idEmision String
+        +idEleccion int
+        +hashHoja Hash
+        +credencialesEmitidas int
+        +ultimaEmisionEn DateTime
+    }
+
     class ElectoralImageService {
         <<servicio NestJS>>
         +saveImage(file Multer.File, kind ElectoralImageKind) String
@@ -432,6 +456,32 @@ classDiagram
         +obtenerEstado(idEleccion int, claveIntento String) EstadoRevoto
         +registrarConsumo(idEleccion int, claveIntento String, votosObjetivo int) EstadoRevoto
     }
+
+    %% ═══ Entidad de Firmas Digitales — Tercero de Confianza (VOTAR-377) ═══
+
+    class CredencialValidacionService {
+        <<servicio NestJS>>
+        +emitir(idEleccion int, votanteHash Hash, commit Hash, ipOrigen String) CredencialEmitida
+        +consumir(idEleccion int, secreto Hash) void
+    }
+
+    class FirmaInstitucionalService {
+        <<servicio NestJS — clave dedicada VALIDATOR_PRIVATE_KEY>>
+        +firmarValidacion(idEleccion int, message ValidationMessage) FirmaValidacion
+        +obtenerDireccionValidador() String
+    }
+
+    class EntidadFirmasService {
+        <<servicio NestJS — orquesta FASE 2 anónima>>
+        +certificarSufragio(idEleccion int, dto SolicitarFirmaValidacionDto) FirmaValidacionResponse
+        +obtenerClavePublica() ClavePublicaValidador
+    }
+
+    CredencialValidacion "1" --o "0..*" CredencialValidacionService : gestiona
+    EmisionCredencial "1" --o "0..*" CredencialValidacionService : cuenta
+    EntidadFirmasService ..> CredencialValidacionService : consume credencial (uso único)
+    EntidadFirmasService ..> FirmaInstitucionalService : firma EIP-712 Validation
+    FirmaInstitucionalService ..> ContratoBoleta : verifyingContract del dominio EIP-712
 
     class ArchivarComicioService {
         <<servicio NestJS>>
