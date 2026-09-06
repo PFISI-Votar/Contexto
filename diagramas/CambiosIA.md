@@ -4,6 +4,18 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-06] — Sprint 6 — VOTAR-464 feedback en dashboard de resultados (vía VOTAR-474)
+
+- **Tipo de cambio**: `contexto-sistema.md` (sin diagramas nuevos)
+- **Motivo**: Feedback QA en VOTAR-464 — voto por lista/mixto solo reflejaba un cargo en la UI; se pidió agregar por lista y ruedas/modal por cargo
+- **Cambios específicos**:
+  1. Dashboard Resultados: `POR_LISTA` agrega tallies por lista; `POR_CANDIDATO` muestra una dona por categoría + modal de ganadores
+  2. On-chain sigue siendo `candidateIds[]` (VOTAR-474); la agregación por lista usa `max(votos)` dentro de la lista
+- **User Stories relacionadas**: VOTAR-464 (feedback), VOTAR-474
+- **Archivos**: `contexto-sistema.md`
+
+---
+
 ## [2026-09-03] — Sprint 6 — VOTAR-474 feedback: multi-selección por categoría en BUD
 
 - **Tipo de cambio**: `contexto-sistema.md` (sin diagramas nuevos)

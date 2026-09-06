@@ -350,7 +350,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Ruta | Ticket | Fuente de datos | Configurable (VOTAR-459) |
 |---|---|---|---|
 | `/dashboard` | Resumen | Metadatos off-chain + estado comicio | Siempre visible (se simplifica si Resultados/Participación están ocultas) |
-| `/dashboard/resultados` | VOTAR-364 | `AuditViewContract.getVotesByCandidate` + escrutinio | Sí — `mostrar_dashboard_resultados` |
+| `/dashboard/resultados` | VOTAR-364 + **VOTAR-464/474** | Tallies on-chain por `candidateIds[]`; UI agrega por lista (`POR_LISTA`) o por categoría (`POR_CANDIDATO`) + modal de ganadores | Sí — `mostrar_dashboard_resultados` |
 | `/dashboard/participacion` | VOTAR-365 + **VOTAR-376** | `getParticipationStats` + export PNG client-side | Sí — `mostrar_dashboard_participacion` |
 | `/dashboard/revoto` | VOTAR-329 | `getRevoteStats` + curva acumulativa de sobreescritura | Sí — `mostrar_dashboard_revoto` |
 | `/dashboard/transacciones` | VOTAR-373 | Índice append-only `transaccion_blockchain` | Sí — `mostrar_dashboard_transacciones` |
