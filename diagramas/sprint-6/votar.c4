@@ -166,7 +166,7 @@ model {
       }
       electionConfig = component "Configurador de Comicios" {
         technology "React / react-hook-form / Zod"
-        description "Formulario /comicios/nuevo: alta en BORRADOR con nombre, fechas UTC ISO8601, tipo de votación (POR_CANDIDATO | POR_LISTA | MIXTO), roles dinámicos con límite de postulantes, métodos de autenticación (Google, SSO Institucional — mín. 1) y validación client-side antes de POST /elecciones (US-316)"
+        description "Formulario /comicios/nuevo: alta en BORRADOR con nombre, fechas UTC ISO8601, tipo de votación (POR_CANDIDATO | POR_LISTA), roles dinámicos con límite de postulantes, métodos de autenticación (Google, SSO Institucional — mín. 1) y validación client-side antes de POST /elecciones (US-316)"
       }
       ofertaElectoralPanel = component "Gestor de Oferta Electoral" {
         technology "React / TanStack Query / Zod"

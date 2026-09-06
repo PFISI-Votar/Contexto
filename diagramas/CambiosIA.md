@@ -85,6 +85,21 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-28] — Sprint 6 — Eliminación del tipo de votación MIXTO
+
+- **Tipo de cambio**: edición in-place de DER + Diagrama de clases + C4 en `diagramas/sprint-6/` (todavía no cerrado como sprint entregado; se corrige junto al resto del trabajo de Sprint 6 en vez de abrir Sprint 7)
+- **Motivo**:
+  - El wizard de votación (BUD) unificó "por cargo" y "por lista" en un único componente: en "por cargo" ahora se puede elegir una lista completa como atajo (precarga cada cargo) y además sobrescribir candidatos individuales por rol ("corte de boleta"), que era exactamente el comportamiento que antes distinguía a MIXTO
+  - Con "por cargo" absorbiendo esa capacidad, MIXTO quedó redundante como tercera modalidad electoral — se elimina para no mantener dos rutas de código/datos equivalentes
+- **Cambios específicos**:
+  1. DER: `ELECCION.tipo_votacion` documenta ahora sólo `POR_CANDIDATO | POR_LISTA`
+  2. Diagrama de clases: enumeración `TipoVotacion` pierde el literal `MIXTO`
+  3. C4: la descripción del formulario `/comicios/nuevo` (`votar.frontAdmin`) deja de ofrecer `MIXTO` como opción de tipo de votación
+- **Alcance fuera de los diagramas** (no versionado acá, ver commits de cada repo): enum `TipoVotacion` en `back/src/eleccion/enums/tipo-votacion.enum.ts`, migración `back/src/database/migrations/1787300000000-EliminarTipoVotacionMixto.ts` (recrea `tipo_votacion_enum` sin `MIXTO`, remapea filas existentes a `POR_CANDIDATO`), `TIPOS_VOTACION`/`TIPO_VOTACION_OPTIONS` en `front/src/features/eleccion/lista/data/schema.ts`, y el wizard `front/src/features/voto/components/bud-voting-wizard.tsx`
+- **Archivos**: `Contexto/diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/votar.c4`
+
+---
+
 ## [2026-08-27] — Sprint 6 — VOTAR-466 persistencia de imágenes en PostgreSQL
 
 - **Tipo de cambio**: DER + Diagrama de clases + C4 de `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; carpeta Sprint 6 tomada como base desde `feature/VOTAR-459-fix-visibilidad-de-dashboard-publico`, ver entrada anterior, para evitar divergencia al mergear ambas ramas)
