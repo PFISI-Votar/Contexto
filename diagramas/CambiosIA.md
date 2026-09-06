@@ -4,6 +4,30 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-06] — Sprint 6 — VOTAR-464 feedback en dashboard de resultados (vía VOTAR-474)
+
+- **Tipo de cambio**: `contexto-sistema.md` (sin diagramas nuevos)
+- **Motivo**: Feedback QA en VOTAR-464 — voto por lista/mixto solo reflejaba un cargo en la UI; se pidió agregar por lista y ruedas/modal por cargo
+- **Cambios específicos**:
+  1. Dashboard Resultados: `POR_LISTA` agrega tallies por lista; `POR_CANDIDATO` muestra una dona por categoría + modal de ganadores
+  2. On-chain sigue siendo `candidateIds[]` (VOTAR-474); la agregación por lista usa `max(votos)` dentro de la lista
+- **User Stories relacionadas**: VOTAR-464 (feedback), VOTAR-474
+- **Archivos**: `contexto-sistema.md`
+
+---
+
+## [2026-09-03] — Sprint 6 — VOTAR-474 feedback: multi-selección por categoría en BUD
+
+- **Tipo de cambio**: `contexto-sistema.md` (sin diagramas nuevos)
+- **Motivo**: Feedback de QA — el BUD no permitía elegir N candidatos dentro de una categoría multi-banca (`cantidadCargos > 1`) ni había copy claro de configuración
+- **Cambios específicos**:
+  1. `CATEGORIA.cantidadCargos` documentado como tope de postulantes **y** de selecciones del votante
+  2. Alineado con boleta digital (`cantidadCargos` en API) + BUD multi-select + merge de diseño VOTAR-464
+- **User Stories relacionadas**: VOTAR-474 (feedback), VOTAR-464
+- **Archivos**: `contexto-sistema.md`
+
+---
+
 ## [2026-09-03] — Sprint 6 — VOTAR-377 Validación y Compliance Normativo mediante Entidad de Firmas Anónimas
 
 - **Tipo de cambio**: DER + Diagrama de clases + C4 + nuevo diagrama de secuencia de `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; se continúa sobre la carpeta Sprint 6 ya existente)
@@ -22,6 +46,23 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 - **User Stories relacionadas**: VOTAR-377 (Compliance Ley de Firma Digital), relacionada con VOTAR-354 (Merkle proof autenticada), VOTAR-357 (firma local de boleta), VOTAR-379 (desvinculación identidad↔voto), VOTAR-382 (gestor de secretos — cierre del riesgo residual de `VALIDATOR_PRIVATE_KEY` en env).
 - **PRs**: blockchain (BallotContract + ElectionFactory + tests + deploy), back (módulo `entidad-firmas` + migración + audit), front (integración BUD + ABIs), Contexto (diagramas).
 - **Archivos**: `Contexto/diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `Contexto/diagramas/sprint-6/votar.c4`, `Contexto/diagramas/sprint-6/secuencia-validacion-firmas-votar-377.mmd`, `Contexto/contexto-sistema.md`
+
+---
+
+## [2026-08-31] — Sprint 6 — VOTAR-474 escrutinio multi-categoría on-chain
+
+- **Tipo de cambio**: Diagrama de clases + C4 + secuencia de resultados + nota DER en `diagramas/sprint-6/` (norma: no editar in-place sprints anteriores)
+- **Motivo**:
+  - Bug: `VoteRegistry` solo almacenaba un `candidateId` por `voterHash`; el escrutinio público no incrementaba tallies de categorías no-primarias
+  - Fix: `recordVote` / `castSignedVote` aceptan `candidateIds[]` (EIP-712 domain v2); un `VoteCast` por boleta + `VoteUpdated` por cada id
+- **Cambios específicos**:
+  1. Clases: `ContratoBoleta.castSignedVote` con `candidatoIds` en el digest EIP-712; `RegistroVoto.recordVote(..., candidatoIds int[])` + `MAX_CANDIDATES_PER_BALLOT`; notas VOTAR-474
+  2. C4: descripciones de `BallotContract` / `VoteRegistry` y relación `recordVote(candidateIds[])`
+  3. Secuencia VOTAR-364: `castSignedVote (candidateIds[])` → `VoteCast + VoteUpdated×N`
+  4. DER: `TRANSACCION_BLOCKCHAIN.nombre_evento` incluye `VoteUpdated` (índice on-chain; sin entidades off-chain nuevas)
+  5. `contexto-sistema.md`: flujo de sufragio y política LAST_WINS con `candidateIds[]`
+- **User Stories relacionadas**: VOTAR-474
+- **Archivos**: `diagramas/sprint-6/Diagrama de clases - Sprint 6 - PFISI.mmd`, `diagramas/sprint-6/votar.c4`, `diagramas/sprint-6/secuencia-visualizacion-resultados-votar-364.mmd`, `diagramas/sprint-6/Diagrama Entidad Relación - Sprint 6 - PFISI.mmd`, `contexto-sistema.md`
 
 ---
 

@@ -161,9 +161,9 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
      b. MerkleProof.verify(proof, root, leaf) ← verifica padrón; revierte `InvalidMerkleProof` si falla (US-339)
      c. ECDSA.recover(payload, firmaVotante) ← verifica Firma Digital del votante (Ley 25.506)
      d. Valida política re-voto (RevoteConfig)
-     e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS)
+     e. VoteRegistry.sol: registra/sobrescribe por nullifier (LAST_WINS) con `candidateIds[]` (VOTAR-474)
      f. TallyContract: actualiza contadores por delta
-     g. Emite SignedVoteCast(electionId, nullifier, selectionHash, signer)
+     g. Emite SignedVoteCast(electionId, nullifier, selectionHash, signer) + VoteCast/VoteUpdated (candidateIds[]) vía VoteRegistry
   8. Votante recibe recibo criptográfico (hash tx + código verificación)
 ```
 
@@ -180,7 +180,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `ELECCION` | Comicio: nombre, descripción, fechas, estado (`BORRADOR→CONFIGURADA→ABIERTA→CERRADA→ESCRUTADA`) |
 | `CONFIGURACION_COMICIO` | Parámetros: voto múltiple, max intentos, intervalo mínimo, política de cómputo |
 | `BOLETA` | Boleta electoral vinculada a una elección |
-| `CATEGORIA` | Cargo/categoría dentro de la boleta (ej. Presidente, Vocales) |
+| `CATEGORIA` | Cargo/categoría dentro de la boleta (ej. Presidente, Vocales). `cantidadCargos` limita postulantes por lista y selecciones del votante en BUD (VOTAR-474) |
 | `LISTA` | Agrupación/lista electoral |
 | `CANDIDATO` | Candidato dentro de una lista y categoría |
 | `PADRON_ELECTORAL` | Metadatos del padrón (hash SHA-256, total habilitados, estado) |
@@ -335,7 +335,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **La clave privada de la billetera efímera NUNCA se persiste** en ningún storage (ni BD ni blockchain). Se genera en Web Crypto API del navegador, firma el voto y se destruye.
 - **Merkle Proofs NO se almacenan en BD**. Son calculados en tiempo de ejecución por el backend bajo demanda autenticada.
 - **VOTO no tiene FK a VOTANTE**. El voto "nace huérfano de identidad" (diseño intencional Ley 25.326).
-- **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe el candidateId del nullifier en cada re-voto mientras el comicio esté abierto. Post-cierre, inmutable.
+- **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe los `candidateIds[]` del nullifier en cada re-voto mientras el comicio esté abierto (VOTAR-474). Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
 - **Diagramas de referencia**: ver `Contexto/diagramas/sprint-6/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
@@ -361,7 +361,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | Ruta | Ticket | Fuente de datos | Configurable (VOTAR-459) |
 |---|---|---|---|
 | `/dashboard` | Resumen | Metadatos off-chain + estado comicio | Siempre visible (se simplifica si Resultados/Participación están ocultas) |
-| `/dashboard/resultados` | VOTAR-364 | `AuditViewContract.getVotesByCandidate` + escrutinio | Sí — `mostrar_dashboard_resultados` |
+| `/dashboard/resultados` | VOTAR-364 + **VOTAR-464/474** | Tallies on-chain por `candidateIds[]`; UI agrega por lista (`POR_LISTA`) o por categoría (`POR_CANDIDATO`) + modal de ganadores | Sí — `mostrar_dashboard_resultados` |
 | `/dashboard/participacion` | VOTAR-365 + **VOTAR-376** | `getParticipationStats` + export PNG client-side | Sí — `mostrar_dashboard_participacion` |
 | `/dashboard/revoto` | VOTAR-329 | `getRevoteStats` + curva acumulativa de sobreescritura | Sí — `mostrar_dashboard_revoto` |
 | `/dashboard/transacciones` | VOTAR-373 | Índice append-only `transaccion_blockchain` | Sí — `mostrar_dashboard_transacciones` |

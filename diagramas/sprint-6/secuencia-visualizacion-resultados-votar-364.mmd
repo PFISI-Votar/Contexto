@@ -47,6 +47,6 @@ sequenceDiagram
     end
   end
 
-  Votante->>RPC: castSignedVote (tx)
-  RPC->>VR: recordVote → VoteCast
-  Note over Poller,FE: Próximo ciclo del poller detecta delta (UAT-01)
+  Votante->>RPC: castSignedVote (candidateIds[])
+  RPC->>VR: recordVote → VoteCast + VoteUpdated×N
+  Note over Poller,FE: Próximo ciclo del poller detecta delta en todas las categorías (VOTAR-474 / UAT-01)
