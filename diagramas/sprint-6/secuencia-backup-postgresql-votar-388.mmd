@@ -1,0 +1,37 @@
+%% VOTAR-388 — Respaldo diario cifrado de PostgreSQL
+%% UAT-01 restore | UAT-03 alerta ENOSPC | UAT-04 ilegible sin clave
+
+sequenceDiagram
+  autonumber
+  participant Sched as BackupScheduler<br/>(BACKUP_ENABLED)
+  participant Svc as BackupService
+  participant PG as PostgreSQL 16
+  participant FS as src/backups/
+  participant Remote as BACKUP_REMOTE_DIR<br/>(offsite)
+  participant Mail as MailService<br/>(ALERT_EMAIL_TO)
+  actor Autoridad as Autoridad Electoral
+
+  Note over Sched,Svc: Hora de baja carga (BACKUP_HOUR, default 03:00)
+
+  Sched->>Svc: runBackup()
+  Svc->>PG: pg_dump -F c (volcado completo)
+  PG-->>Svc: dump temporal (.tmp-*.dump)
+  Svc->>Svc: AES-256-GCM (BACKUP_ENCRYPTION_KEY)
+  Svc->>FS: escribir *.dump.enc + *.sha256
+  Svc->>Svc: assertIntegrity (checksum)
+  Svc->>FS: eliminar dump en claro
+  alt BACKUP_REMOTE_DIR configurado
+    Svc->>Remote: copiar *.dump.enc + *.sha256
+  end
+  Svc->>FS: podar artefactos > 30 días
+  Svc-->>Sched: BackupResult OK
+
+  Note over Svc,Mail: UAT-03 — fallo de disco / integridad
+  Svc->>PG: pg_dump
+  PG-->>Svc: ENOSPC / error
+  Svc->>Mail: sendMail alerta crítica
+  Mail-->>Autoridad: [VOTAR] fallo de respaldo PostgreSQL
+
+  Note over FS,Autoridad: UAT-04 — sin clave el archivo es ilegible
+  Autoridad->>Remote: lee *.dump.enc sin BACKUP_ENCRYPTION_KEY
+  Remote-->>Autoridad: ciphertext AES-GCM (no SQL legible)

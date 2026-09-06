@@ -7,6 +7,9 @@
 %% - VOTAR-459: visibilidad configurable de solapas del Dashboard Público
 %%   (ConfiguracionComicioService.obtener/guardarVisibilidadDashboard,
 %%   SeccionDashboardVisibleGuard) — sin nuevas clases de dominio en este modelo
+%% - VOTAR-466: ElectoralImageService + ImagenElectoral (bytea en PostgreSQL)
+%% - VOTAR-388: BackupService / BackupScheduler — pg_dump cifrado AES-256-GCM,
+%%   retención 30d, copia remota opcional y alerta mail ante fallo
 %% Hereda Sprint 5:
 %% - VOTAR-322: archivado lógico CERRADA → ARCHIVADA (solo PostgreSQL; cero gas)
 %% - VOTAR-347/348: pausa/reanudación de emergencia (Pausable + pausada off-chain)
@@ -514,6 +517,20 @@ classDiagram
         +checkAndTopUpWallets() void
     }
 
+    class BackupService {
+        <<servicio NestJS — VOTAR-388>>
+        +runBackup() BackupResult
+        +restoreBackup(encryptedPath String, targetDatabase String) RestoreResult
+        +assertIntegrity(encryptedPath String) String
+        +pruneExpiredBackups(backupDir String) String[]
+    }
+
+    class BackupScheduler {
+        <<scheduler NestJS — gated BACKUP_ENABLED>>
+        +onModuleInit() void
+        +onModuleDestroy() void
+    }
+
     class TransaccionBlockchain {
         <<entidad TypeORM>>
         +hashTransaccion Hash PK
@@ -563,6 +580,9 @@ classDiagram
     ConfiguracionSistema ..> ElectoralImageService : logoUrl (saveImage/deleteIfManagedUrl)
     RpcFailoverService ..> ContratoBoleta : eth_call / sendTransaction
     FaucetService ..> RpcFailoverService : balance + transfer SepoliaETH
+    BackupScheduler ..> BackupService : tick diario (BACKUP_HOUR)
+
+    note for BackupService "VOTAR-388: pg_dump → AES-256-GCM → src/backups/*.dump.enc\n+ sidecar .sha256. Plain dump se elimina al terminar.\nBACKUP_REMOTE_DIR opcional (offsite); retención ≥30d.\nFallo (ENOSPC, integridad) → mail crítico a ALERT_EMAIL_TO.\nCLI: npm run db:backup / db:restore."
 
     TransaccionesPublicService --> TransaccionBlockchainService : listar
     TransaccionBlockchainService ..> ContratoBoleta : getTransactionReceipt / parse

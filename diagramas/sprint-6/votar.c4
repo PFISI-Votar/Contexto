@@ -93,6 +93,12 @@ model {
     technology "Alchemy / QuickNode / Infura (rotación)"
     description "VOTAR-386: proveedor secundario activado en <1s cuando el principal falla o agota free tier"
   }
+
+  backupOffsite = externalSystem "Almacenamiento Offsite de Backups" {
+    #offchain
+    technology "Volumen remoto / bucket montado (BACKUP_REMOTE_DIR)"
+    description "VOTAR-388: ubicación geográfica distinta al servidor principal. Recibe *.dump.enc + *.sha256 tras el cifrado AES-256-GCM. Retención ≥30 días"
+  }
   
   ethereum = externalSystem "Red Ethereum" {
     #web3
@@ -263,6 +269,10 @@ model {
       faucetService = component "Faucet Sepolia (VOTAR-387)" {
         technology "NestJS cron / ethers Wallet"
         description "checkAndTopUpWallets: recarga TEST_WALLET_ADDRESSES desde FAUCET_MASTER si balance < 0.1 SepoliaETH. Alerta mail si fondos insuficientes"
+      }
+      backupService = component "Respaldos PostgreSQL cifrados (VOTAR-388)" {
+        technology "NestJS scheduler / pg_dump / AES-256-GCM"
+        description "Volcado diario en hora de baja carga (BACKUP_HOUR) → cifrado → src/backups/*.dump.enc + .sha256. Copia opcional a BACKUP_REMOTE_DIR, retención ≥30d, alerta mail a ALERT_EMAIL_TO ante fallo/integridad. CLI: npm run db:backup | db:restore"
       }
       lifecycleManager = component "Gestor de Ciclo de Vida Electoral" {
         technology "Node.js Service"
@@ -553,6 +563,8 @@ model {
   votar.bud.cryptoEngine -> votar.api.apiRouter "POST /elecciones/:id/validacion/credencial { commit } (FASE 1, JWT)" { technology "HTTPS / JSON" }
   votar.bud.cryptoEngine -> votar.api.apiRouter "POST /validacion/elecciones/:id/firma { secreto, payload } (FASE 2, sin cookie SSO)" { technology "HTTPS / JSON, credentials:omit" }
   votar.api.faucetService -> votar.api.rpcFailover "Transfer SepoliaETH a TEST_WALLET_ADDRESSES (VOTAR-387)"
+  votar.api.backupService -> votar.db "pg_dump (formato custom) sin interrumpir el comicio" { technology "libpq / TCP" }
+  votar.api.backupService -> backupOffsite "Copia *.dump.enc + *.sha256 (BACKUP_REMOTE_DIR)" { technology "filesystem / mount" }
   votar.api.revotePolicyService -> votar.api.dataAccess "UPSERT registro_intento_sufragio (VOTAR-451/452)"
   votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/registrar-consumo { votosObjetivo }" { technology "JSON/HTTPS" }
   votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373)" { technology "HTTPS / JSON" }
@@ -608,7 +620,7 @@ views {
     
     include votante, autoridad, auditor
     include votar
-    include sso, rpc, ethereum
+    include sso, rpc, ethereum, backupOffsite
 
     autoLayout TopBottom
   }
@@ -650,6 +662,7 @@ views {
     include votar.bud
     include votar.panel
     include votar.db
+    include backupOffsite
     
     autoLayout LeftRight
   }
@@ -893,5 +906,15 @@ views {
     votar.bud.blockchainClient -> rpcBackup "4. reintento automático proveedor B (<1s)"
     rpcBackup -> votar.contracts.ballotContract "5. tx confirmada"
     votar.api.rpcFailover -> votar.api.auditLogger "6. log failover event (UAT-04)"
+  }
+
+  dynamic view backup_postgresql_flow {
+    title "Respaldo diario cifrado de PostgreSQL (VOTAR-388)"
+    description "pg_dump → AES-256-GCM → src/backups + offsite opcional; alerta mail ante fallo de integridad o disco."
+
+    votar.api.backupService -> votar.db "1. pg_dump formato custom (hora BACKUP_HOUR)"
+    votar.db -> votar.api.backupService "2. volcado temporal"
+    votar.api.backupService -> backupOffsite "3. *.dump.enc cifrado AES-256-GCM + .sha256"
+    backupOffsite -> autoridad "4. (si falla ENOSPC/integridad) mail crítico ALERT_EMAIL_TO"
   }
 }

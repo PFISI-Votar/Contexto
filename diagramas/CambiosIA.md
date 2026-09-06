@@ -25,6 +25,25 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-08-31] — Sprint 6 — VOTAR-388 respaldos diarios cifrados de PostgreSQL
+
+- **Tipo de cambio**: Clases + C4 + secuencia + DER (nota) + contexto-sistema en `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; Sprint 6 ya abierto por VOTAR-459/466)
+- **Motivo**:
+  - US: como Autoridad Electoral disponer de respaldos diarios cifrados del PostgreSQL off-chain para restaurar configuración de comicios, padrón y audit log ante fallos de infraestructura
+  - Implementación en `back`: módulo `src/backups/`, scripts `npm run db:backup` / `db:restore`, scheduler gated por `BACKUP_ENABLED`
+  - No hay nuevas tablas: los artefactos son archivos `*.dump.enc` (+ sidecar SHA-256) bajo `src/backups/` y copia opcional a `BACKUP_REMOTE_DIR`
+- **Cambios específicos**:
+  1. Diagrama de clases: `BackupService`, `BackupScheduler` + nota de cifrado/retención/alertas
+  2. C4: componente `backupService`, externalSystem `backupOffsite`, relaciones pg_dump/offsite, dynamic view `backup_postgresql_flow`
+  3. Nueva secuencia `secuencia-backup-postgresql-votar-388.mmd`
+  4. DER: nota de evolución — backups fuera del modelo relacional
+  5. `contexto-sistema.md`: ticket VOTAR-388 en tabla Sprint 6
+- **User Stories relacionadas**: VOTAR-388
+- **PRs**: back #95, Contexto (esta PR)
+- **Archivos**: `diagramas/sprint-6/*`, `diagramas/CambiosIA.md`, `contexto-sistema.md`
+
+---
+
 ## [2026-08-27] — Sprint 6 — VOTAR-466 persistencia de imágenes en PostgreSQL
 
 - **Tipo de cambio**: DER + Diagrama de clases + C4 de `diagramas/sprint-6/` (norma: no editar in-place Sprint 5; carpeta Sprint 6 tomada como base desde `feature/VOTAR-459-fix-visibilidad-de-dashboard-publico`, ver entrada anterior, para evitar divergencia al mergear ambas ramas)

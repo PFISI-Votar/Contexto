@@ -1,7 +1,7 @@
 # VOTAR — Contexto del Sistema para Consulta IA
 
 > Documento de referencia rápida para agentes IA. Sintetiza toda la documentación del proyecto.
-> Última actualización: 2026-08-26 | Equipo: Five Stack | UTN FRVM
+> Última actualización: 2026-08-31 | Equipo: Five Stack | UTN FRVM
 
 ---
 
@@ -389,6 +389,8 @@ Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **4
 | Ticket | Estado | Descripción |
 |---|---|---|
 | VOTAR-459 | Implementado | Visibilidad configurable de solapas del Dashboard Público (Resultados/Participación/Re-voto/Transacciones), enforcement 403 en backend |
+| VOTAR-466 | Implementado | Persistencia de imágenes electorales en PostgreSQL (`imagen_electoral` bytea; `GET /imagenes/:id`) |
+| VOTAR-388 | En revisión | Respaldos diarios cifrados AES-256-GCM de PostgreSQL (`src/backups/`, retención 30d, offsite opcional, alertas mail) |
 
 ### Sprint 5 — entregas principales
 
