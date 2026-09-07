@@ -1,0 +1,64 @@
+%% VOTAR-377 — Entidad de Firmas Digitales (Tercero de Confianza, Ley 25.506)
+%% Esquema commit/reveal de dos fases: la identidad se valida en una request
+%% autenticada que no ve la selección; la firma se emite en una request anónima
+%% que no ve la identidad (Blind Signing, AC-3). El contrato rechaza on-chain todo
+%% voto sin la firma institucional (AC-4 / UAT-01).
+
+sequenceDiagram
+  autonumber
+  actor Votante
+  participant BUD as BUD Wizard<br/>(cryptoEngine)
+  participant API1 as API — EntidadFirmasController<br/>(JWT votante)
+  participant API2 as API — EntidadFirmasPublicController<br/>(sin cookie)
+  participant Cred as CredencialValidacionService
+  participant Firma as FirmaInstitucionalService<br/>(VALIDATOR_PRIVATE_KEY)
+  participant DB as credencial_validacion / emision_credencial
+  participant RPC as Sepolia RPC
+  participant Ballot as BallotContract
+
+  Note over Votante,BUD: Login SSO/OIDC previo → JWT de votante (votanteHash en claims)
+
+  rect rgb(235,245,255)
+    Note over BUD,DB: FASE 1 — Emisión de credencial (AUTENTICADA)
+    BUD->>BUD: s = crypto.getRandomValues(32)  (sólo RAM)<br/>commit = keccak256(s)
+    BUD->>API1: POST /elecciones/:id/validacion/credencial { commit }
+    API1->>Cred: emitir(idEleccion, votanteHash (JWT), commit, ip)
+    Cred->>Cred: eleccion ABIERTA ? + isVotanteHabilitado(padrón) ? + tope por votante
+    Cred->>DB: INSERT credencial_validacion(commit, expira_en)  — sin votante_hash
+    Cred->>DB: UPSERT emision_credencial(hash_hoja, contador)   — sin commit
+    Cred->>API1: audit CREDENCIAL_VALIDACION_EMITIDA (votante ofuscado)
+    API1-->>BUD: 201 { expiraEn }
+  end
+
+  BUD->>BUD: Genera billetera efímera + nullifier + firma EIP-712 Vote (clave efímera)
+
+  rect rgb(235,255,235)
+    Note over BUD,DB: FASE 2 — Firma institucional (ANÓNIMA, credentials:'omit')
+    BUD->>API2: POST /validacion/elecciones/:id/firma<br/>{ secreto s, nullifier, selectionHash, candidateId, timestamp, expectedSigner }
+    API2->>Cred: consumir(idEleccion, s)
+    Cred->>DB: UPDATE ... SET estado='CONSUMIDA'<br/>WHERE commit=keccak256(s) AND estado='EMITIDA' AND expira_en > now()
+    alt rowCount = 0 (inexistente / vencida / ya usada)
+      Cred-->>API2: 410 Gone (sin oráculo)
+    else consumida
+      API2->>Firma: firmarValidacion(idEleccion, message)
+      Firma->>Firma: dominio EIP-712 = { VOTAR, 1, chainId, verifyingContract: ballot(idEleccion) }
+      Firma-->>API2: validatorSignature (65 bytes) + direccionValidador
+      API2->>Cred: audit FIRMA_VALIDACION_EMITIDA (actor=ANONIMO, sin nullifier/selectionHash/commit)
+      API2-->>BUD: 201 { firmaValidacion, direccionValidador }
+    end
+  end
+
+  BUD->>BUD: zeroize(secreto)
+
+  rect rgb(255,240,235)
+    Note over BUD,Ballot: Enforcement on-chain (AC-4 / UAT-01 / UAT-03)
+    BUD->>RPC: castSignedVote(vote, merkleProof, signature, validatorSignature)
+    RPC->>Ballot: _assertElectionAcceptingVotes
+    Ballot->>Ballot: validatorSignature.length == 0 ? → revert MissingValidatorSignature
+    Ballot->>Ballot: ECDSA.recover(Validation digest) ∈ VALIDATOR_ROLE ?<br/>→ revert InvalidValidatorSignature (payload alterado o firmante no autorizado)
+    Ballot->>Ballot: Merkle proof + anti-doble-voto + firma efímera del votante
+    Ballot->>Ballot: VoteRegistry.recordVote + emit SignedVoteCast
+    Ballot-->>BUD: txHash
+  end
+
+  Note over Votante,Ballot: UAT-02: la validatorSignature en la calldata prueba "un integrante del<br/>padrón votó" — NO contiene voterLeaf, DNI ni nombre del elector.<br/>UAT-04: el auditor recupera la firma de cada SignedVoteCast y verifica<br/>hasRole(VALIDATOR_ROLE, signer) → presunción de integridad y autoría.

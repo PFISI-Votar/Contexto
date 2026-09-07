@@ -1,0 +1,21 @@
+%% VOTAR-374 — Acta de Apertura (PDF client-side)
+%% UAT-01: PDF con padrón, oferta y verificación criptográfica
+
+sequenceDiagram
+  autonumber
+  actor Autoridad
+  participant Panel as Panel de Administración<br/>(documentos-comicio-menu)
+  participant API as API Backend
+  participant Acta as ActaAperturaService
+  participant CFG as ConfiguracionSistema
+  participant Padron as PadronService
+  participant Front as generar-acta-apertura-pdf.ts
+
+  Autoridad->>Panel: Descargar Acta de Apertura
+  Panel->>API: GET /elecciones/:id/acta-apertura
+  API->>Acta: compilarDatos(idEleccion)
+  Acta->>CFG: leer plantilla + logo (singleton)
+  Acta->>Padron: resumen agregado (total + hash Merkle)
+  Acta-->>Panel: ActaAperturaDto (sin PII de votantes)
+  Panel->>Front: render PDF según toggles (SIMPLE | PERSONALIZADO)
+  Front-->>Autoridad: acta-apertura-{id}.pdf (client-side, no persiste en BD)

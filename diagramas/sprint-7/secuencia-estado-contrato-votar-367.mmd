@@ -1,0 +1,32 @@
+%% VOTAR-367 — Visualización del estado del contrato en Dashboard público
+%% UAT-01: ficha técnica con direcciones + Etherscan | UAT-02: hash Merkle comparable offline
+
+sequenceDiagram
+  autonumber
+  actor Auditor
+  participant Dash as Dashboard Público<br/>(/dashboard/estado)
+  participant API as API Backend<br/>(ContratoEstadoPublicController)
+  participant Svc as ContratoEstadoPublicService
+  participant BC as BlockchainService
+  participant RPC as Sepolia RPC
+  participant AV as AuditViewContract
+  participant MRS as MerkleRootStore
+  participant EF as ElectionFactory
+
+  Auditor->>Dash: Abre sección Estado (sin auth)
+  Dash->>API: GET /elecciones/:id/contrato-estado-publica
+  API->>Svc: obtenerContratoEstadoPublica(id)
+  Svc->>BC: getContratoEstadoOnChain(id)
+  BC->>RPC: eth_call getElection(electionId)
+  RPC->>EF: resolve ballot / voteRegistry / auditView
+  EF-->>BC: direcciones + revoteConfig
+  BC->>RPC: eth_call getElectionState + merkleRootStore()
+  RPC->>AV: view (sin gas)
+  AV->>MRS: getElectionState / getMerkleRoot / isPublished
+  MRS-->>AV: estado + raíz Merkle + timestamp
+  AV-->>BC: metadatos on-chain
+  BC-->>Svc: { estadoOnChain, merkleRoot, revoto, contratos, explorerUrl }
+  Svc-->>Dash: ContratoEstadoPublicaResponseDto
+  Dash-->>Auditor: Ficha técnica (direcciones Etherscan, Merkle, límites re-voto)
+
+  Note over Auditor,Dash: UAT-02: auditor compara merkleRoot.hash<br/>con raíz offline del padrón de electores

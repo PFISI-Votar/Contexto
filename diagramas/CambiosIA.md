@@ -4,6 +4,25 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-07] — Sprint 7 — VOTAR-486 no se puede eliminar comicio antes de oficializar
+
+- **Tipo de cambio**: apertura de `diagramas/sprint-7/` (copia de Sprint 6 + cambio aplicado; norma: no editar in-place el Sprint 6 ya entregado)
+- **Motivo**:
+  - `EleccionesService.eliminarEleccion` hacía `DELETE` físico sobre `eleccion`. La FK `AUDIT_LOG.id_eleccion → ELECCION` es `ON DELETE SET NULL`, así que Postgres ejecuta internamente `UPDATE audit_log SET id_eleccion = NULL` al borrar el comicio.
+  - El trigger de inmutabilidad de `audit_log` (VOTAR-372, `prevent_audit_log_mutation`) bloquea **todo** `UPDATE`, incluido el de la acción referencial del FK. Resultado: cualquier comicio con bitácora asociada (p. ej. tras cargar el padrón → `PADRON_CARGADO`) no se podía eliminar, ni siquiera en `BORRADOR`.
+  - Fix: `eleccion` pasa a **borrado lógico** (`@DeleteDateColumn` → `fecha_eliminacion`). `eliminarEleccion` usa `softRemove`; TypeORM excluye automáticamente los comicios borrados de toda lectura (`find`, `findOne`, QueryBuilder). El `DELETE` físico nunca ocurre, así que el trigger de `audit_log` no se dispara y la bitácora conserva su `id_eleccion` histórico.
+  - Se descarta el drop del FK: para el borrado de un comicio no oficializado se prefiere no perder integridad referencial y mantener la bitácora institucional intacta.
+- **Cambios específicos**:
+  1. DER Sprint 7: `ELECCION` suma `fecha_eliminacion` (soft delete). Se aclara en `AUDIT_LOG.id_eleccion` que es nullable con `ON DELETE SET NULL` pero que el valor histórico sobrevive por el soft delete de `ELECCION`.
+  2. Diagrama de clases Sprint 7: nota sobre `EleccionesService.eliminarEleccion` → `softRemove` y `Eleccion.fechaEliminacion` (sin nuevas clases de dominio).
+  3. Backend (repo `back`): `Eleccion.fechaEliminacion` (`@DeleteDateColumn`), migración `1787400000000-EleccionSoftDelete`, `eliminarEleccion` → `softRemove` (se elimina la limpieza previa de candidatos por raw SQL, ya innecesaria).
+- **Nota / deuda**: el soft delete de `eleccion` no borra su oferta (boleta, categoría, lista, candidato, `padron_votante`, config); esas filas quedan huérfanas pero invisibles a toda lectura. Si se necesita recuperar espacio, se puede agregar una limpieza en cascada dentro de la misma transacción del `softRemove`.
+- **User Stories relacionadas**: VOTAR-486, VOTAR-372 (inmutabilidad audit_log), VOTAR-322 (ciclo de vida del comicio)
+- **PRs**: back (entidad + migración + servicio + tests), Contexto (DER + clases Sprint 7)
+- **Archivo nuevo**: `diagramas/sprint-7/Diagrama Entidad Relación - Sprint 7 - PFISI.mmd`, `diagramas/sprint-7/Diagrama de clases - Sprint 7 - PFISI.mmd` (+ resto de `diagramas/sprint-7/` heredado de Sprint 6 sin cambios)
+
+---
+
 ## [2026-09-06] — Sprint 6 — VOTAR-464 feedback en dashboard de resultados (vía VOTAR-474)
 
 - **Tipo de cambio**: `contexto-sistema.md` (sin diagramas nuevos)

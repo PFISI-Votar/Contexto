@@ -1,0 +1,52 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e8f1f8', 'primaryTextColor': '#202124', 'primaryBorderColor': '#2f6f9f', 'lineColor': '#5f6368', 'fontFamily': 'Inter, sans-serif'}}}%%
+%% DIAGRAMA DE SECUENCIA — Visualización dinámica de resultados (VOTAR-364)
+%% Proyecto Final de Ingeniería en Sistemas de Información
+%% UTN FRVM — Equipo 09 — Sprint 3
+sequenceDiagram
+  autonumber
+  actor Auditor as Auditor (Dashboard)
+  actor Votante as Votante (BUD)
+  participant FE as Dashboard Público
+  participant API as NestJS EscrutinioModule
+  participant Cache as Cache in-memory
+  participant Poller as EscrutinioPoller (4s)
+  participant WS as EleccionGateway
+  participant RPC as Nodo RPC (Sepolia)
+  participant AV as AuditViewContract
+  participant VR as VoteRegistry
+
+  Note over Auditor,VR: UAT-02 — N clientes leen API/cache; un solo poller consulta Sepolia
+  Auditor->>FE: Abre /comicios/:id/dashboard/resultados
+  FE->>API: GET /elecciones/:id/resultados
+  API->>Cache: lookup snapshot
+  alt cold start
+    API->>RPC: resolveAuditView + getParticipationStats + getVotesByCandidate
+    RPC->>AV: view calls
+    AV->>VR: tallies
+    VR-->>AV: counts
+    AV-->>RPC: stats
+    RPC-->>API: tallies
+    API->>Cache: set snapshot + fingerprint
+  end
+  Cache-->>API: EscrutinioResponseDto
+  API-->>FE: JSON (Cache-Control: max-age=3)
+  FE->>FE: Render gráficos recharts
+  FE->>WS: dashboard:subscribe { idEleccion }
+
+  loop cada 4s (comicio ABIERTA + mostrarResultadosTiempoReal)
+    Poller->>API: refreshAndDetectChange(id)
+    API->>RPC: AuditView views
+    RPC-->>API: tallies
+    alt fingerprint cambió
+      API->>Cache: update
+      API->>WS: emitResultadosActualizados
+      WS-->>FE: resultados:actualizados
+      FE->>API: invalidate → GET /resultados (cache)
+      API-->>FE: snapshot ≤5s
+      FE->>FE: re-render gráficos (sin reload)
+    end
+  end
+
+  Votante->>RPC: castSignedVote (candidateIds[])
+  RPC->>VR: recordVote → VoteCast + VoteUpdated×N
+  Note over Poller,FE: Próximo ciclo del poller detecta delta en todas las categorías (VOTAR-474 / UAT-01)
