@@ -320,14 +320,14 @@ model {
       }
       dataAccess = component "Acceso a Datos (DAO)" {
         technology "Prisma / SQLAlchemy"
-        description "Gestiona consultas y escrituras a la Base de Datos Relacional con transacciones ACID"
+        description "Gestiona consultas y escrituras a la Base de Datos Relacional con transacciones ACID. VOTAR-498: TLS estricto vía resolveDatabaseSsl (fail-closed en producción) + encryptedColumn sobre columnas sensibles"
       }
     }
 
     db = database "Base de Datos Relacional" {
       #offchain
       technology "PostgreSQL 16"
-      description "Persistencia de configuración institucional, padrón hasheado y bitácora de auditoría. NO almacena votos ni vínculo identidad→sufragio"
+      description "Persistencia de configuración institucional, padrón hasheado y bitácora de auditoría. NO almacena votos ni vínculo identidad→sufragio. VOTAR-498: TLS obligatorio (ssl=on, verify-ca/verify-full en producción), autoridad_electoral.totp_secret/nombre y refresh_session.email/nombre cifrados AES-256-GCM en reposo, pg_hba.conf restringe el acceso al backend + firewall de host (back/deploy/postgres/, back/deploy/firewall/)"
 
       electionSchema = component "Esquema de Comicios" {
         technology "PostgreSQL Schema"
@@ -526,12 +526,12 @@ model {
   votar.api.apiRouter -> votar.api.auditLogger "Registra acciones críticas"
 
   // API Backend -> Base de Datos
-  votar.api.dataAccess -> votar.db.electionSchema "Lee/escribe comicios y direcciones de contrato" { technology "TCP/IP" }
-  votar.api.dataAccess -> votar.db.candidateSchema "Lee/escribe categorías, listas y candidatos" { technology "TCP/IP" }
-  votar.api.dataAccess -> votar.db.voterSchema "Lee/escribe hashes de padrón" { technology "TCP/IP" }
-  votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora (VOTO_EMITIDO anónimo — VOTAR-379)" { technology "TCP/IP" }
+  votar.api.dataAccess -> votar.db.electionSchema "Lee/escribe comicios y direcciones de contrato" { technology "TCP/IP + TLS (verify-ca/verify-full, VOTAR-498)" }
+  votar.api.dataAccess -> votar.db.candidateSchema "Lee/escribe categorías, listas y candidatos" { technology "TCP/IP + TLS (verify-ca/verify-full, VOTAR-498)" }
+  votar.api.dataAccess -> votar.db.voterSchema "Lee/escribe hashes de padrón" { technology "TCP/IP + TLS (verify-ca/verify-full, VOTAR-498)" }
+  votar.api.dataAccess -> votar.db.auditLogSchema "Append-only de bitácora (VOTO_EMITIDO anónimo — VOTAR-379)" { technology "TCP/IP + TLS (verify-ca/verify-full, VOTAR-498)" }
   votar.api.transaccionBlockchainIndexer -> votar.api.dataAccess "INSERT/SELECT transaccion_blockchain (VOTAR-373)" { technology "TypeORM" }
-  votar.api.dataAccess -> votar.db.transaccionBlockchainSchema "Índice append-only de txs públicas" { technology "TCP/IP" }
+  votar.api.dataAccess -> votar.db.transaccionBlockchainSchema "Índice append-only de txs públicas" { technology "TCP/IP + TLS (verify-ca/verify-full, VOTAR-498)" }
   votar.api.transaccionBlockchainIndexer -> rpc "getTransactionReceipt puntual al indexar voto (1 RPC, no scan)" { technology "JSON-RPC/HTTPS" }
   votar.api.lifecycleManager -> votar.api.transaccionBlockchainIndexer "Indexa txs admin (deploy, estado, ventana, candidatos)"
   votar.api.merklePublisherService -> votar.api.transaccionBlockchainIndexer "Indexa RootPublished tras publicar padrón"
@@ -563,7 +563,7 @@ model {
   votar.bud.cryptoEngine -> votar.api.apiRouter "POST /elecciones/:id/validacion/credencial { commit } (FASE 1, JWT)" { technology "HTTPS / JSON" }
   votar.bud.cryptoEngine -> votar.api.apiRouter "POST /validacion/elecciones/:id/firma { secreto, payload } (FASE 2, sin cookie SSO)" { technology "HTTPS / JSON, credentials:omit" }
   votar.api.faucetService -> votar.api.rpcFailover "Transfer SepoliaETH a TEST_WALLET_ADDRESSES (VOTAR-387)"
-  votar.api.backupService -> votar.db "pg_dump (formato custom) sin interrumpir el comicio" { technology "libpq / TCP" }
+  votar.api.backupService -> votar.db "pg_dump (formato custom) sin interrumpir el comicio" { technology "libpq / TCP + TLS (VOTAR-498)" }
   votar.api.backupService -> backupOffsite "Copia *.dump.enc + *.sha256 (BACKUP_REMOTE_DIR)" { technology "filesystem / mount" }
   votar.api.revotePolicyService -> votar.api.dataAccess "UPSERT registro_intento_sufragio (VOTAR-451/452)"
   votar.bud.blockchainClient -> votar.api.apiRouter "POST /votos/registrar-consumo { votosObjetivo }" { technology "JSON/HTTPS" }

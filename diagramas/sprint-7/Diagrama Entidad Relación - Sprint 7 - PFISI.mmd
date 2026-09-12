@@ -197,14 +197,21 @@ erDiagram
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% ACTORES DEL SISTEMA (Usuarios)
+    %% VOTAR-498 — hardening de PostgreSQL: TLS obligatorio (verify-ca/
+    %% verify-full en producción) en las tres rutas de conexión (TypeORM,
+    %% migraciones, pg_dump/pg_restore) + pg_hba.conf restringido al backend
+    %% + firewall a nivel de host. Ver back/deploy/postgres/ y
+    %% back/docs/VOTAR-498-hardening-db.md. No modela una entidad nueva —
+    %% es infraestructura, documentada en el C4 (relaciones hacia BD).
     %% ═══════════════════════════════════════════════════════════════════════
 
     AUTORIDAD_ELECTORAL {
         int id_autoridad PK "Identificador único de la autoridad"
-        string nombre "Nombre completo"
-        string email UK "Email de contacto"
+        string nombre "VOTAR-498: cifrado AES-256-GCM en reposo (columna text)"
+        string email UK "Email de contacto — en claro a propósito: clave de búsqueda del login SSO (VOTAR-498)"
         string rol "ELECTION_ADMIN | PAUSER | MERKLE_UPDATER"
         string identificador_sso "Identificador del SSO/OIDC"
+        string totp_secret "Secreto TOTP 2FA (VOTAR-458); VOTAR-498: cifrado AES-256-GCM en reposo (columna text, nullable)"
         datetime fecha_registro "Fecha de alta en el sistema"
     }
 
