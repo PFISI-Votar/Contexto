@@ -4,6 +4,31 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-08] — Sprint 7 — VOTAR-492 hardening de sesiones: revocación masiva y timeout por inactividad para respuesta a incidentes
+
+- **Tipo de cambio**: edición in-place de los diagramas del Sprint 7 (sprint en curso) + nuevo diagrama de secuencia
+- **Motivo**:
+  - El §12.2 del documento *Monitoreo y Respuesta en Producción* (fase de **Contención**) exige "revocación de sesiones comprometidas" y "bloqueo de flujos de autenticación SSO institucionales". El backend no tenía cómo ejecutar esa contención: la única revocación era `RefreshTokenService.revokeSession(refreshToken)` (una sesión, por token en claro), no había endpoint administrativo, ni revocar-por-usuario, ni global, ni interruptor de bloqueo de login.
+  - Revocar una sesión **no cortaba el flujo**: el access token es un JWT RS256 verificado *stateless* contra JWKS, así que seguía operando hasta 15 min. Se agrega el claim `sid` (id de `refresh_session`) y `JwtStrategy.validate` (ahora `async`) consulta la tabla en cada request del panel → revocación instantánea.
+  - **No había timeout por inactividad**. `refresh_session` no tenía `last_activity_at`, y `rotateSession` creaba una fila nueva de 8 h en cada rotación, por lo que el "tope absoluto de 8 h" tampoco existía: una pestaña abierta renovaba la sesión indefinidamente. Se agrega `last_activity_at` (con caducidad al superar `SESSION_IDLE_TIMEOUT`, default 30 min) y `rotateSession` pasa a **rotar el `token_hash` in-place sobre la misma fila**, preservando `id_session` (para que el claim `sid` sobreviva a los refresh) y `expires_at` (tope de 8 h real).
+  - **Logout no era atómico**: `revokeSession` lanzaba `UnauthorizedException` si la sesión ya estaba revocada/expirada y `clearAuthCookies` nunca se ejecutaba, dejando las cookies en el navegador. Ahora `revokeSession` es idempotente (devuelve `boolean`, no lanza) y el handler usa `try/finally` para limpiar cookies siempre.
+- **Cambios específicos**:
+  1. DER Sprint 7: nueva entidad `REFRESH_SESSION` (antes ni siquiera modelada) con `last_activity_at` y `revoked_reason`; relación conceptual `AUTORIDAD_ELECTORAL ||..o{ REFRESH_SESSION` **sin FK física** (`identificador_sso` es texto del SSO y hay sesiones rol `voter`). `CONFIGURACION_SISTEMA` suma `auth_bloqueo_alcance/motivo/desde/por`. `AUDIT_LOG.tipo_evento` suma `SESION_REVOCADA` y `BLOQUEO_AUTENTICACION`.
+  2. Diagrama de clases Sprint 7: nuevas clases `RefreshSession`, `RefreshTokenService` (con `validateActiveSession`, `revokeSessionsByUser`, `revokeAllSessions`, `listActiveSessions`), `SessionAdminController`, `AuthLockdownGuard`; `ConfiguracionSistema` suma `authBloqueo*`; nota sobre la rotación in-place y el claim `sid`.
+  3. Nuevo `diagramas/sprint-7/secuencia-revocacion-sesiones-votar-492.mmd`: revocación global → `revokeAllSessions` → auditoría; request posterior con access token no expirado → `JwtStrategy.validate` → `validateActiveSession` → 401 + `ACCESO_DENEGADO`; ramas de timeout por inactividad y logout atómico.
+  4. Backend (repo `back`): migraciones `1787500000000-SesionInactividadYRevocacion`, `1787510000000-BloqueoFlujosAutenticacion`, `1787520000000-AuditLogContencionSesiones`; `RefreshTokenService` reescrito; `SessionAdminController` (`GET /auth/sessions`, `DELETE /auth/sessions/otras` con `@AdminAuth()`; `POST /auth/sessions/revocar` y `/revocar-todas` con `@PauserAuth()`); `AuthLockdownGuard` + `@AuthLockdownScope` sobre login/2fa/refresh de autoridades y login de votantes; `PUT /configuracion-sistema/auth-bloqueo` (`@PauserAuth()`); envs `SESSION_IDLE_TIMEOUT`, `SESSION_ACTIVITY_WRITE_INTERVAL`, `AUTH_LOCKDOWN_ALLOWLIST`.
+  5. Frontend (repo `front`): `activity-tracker` (última actividad en `localStorage`, coherente entre pestañas); `handleScheduledRefresh` deja de renovar una sesión ociosa; panel de "Sesiones activas" y "Contención de incidentes" en `/configuracion/seguridad`; enum de auditoría del front al día.
+- **Nota / deuda**:
+  - La rotación in-place descarta el histórico de rotaciones y la (inexistente hoy) detección de reuso de refresh token. Si se necesita, agregar `rotation_count` en la misma migración.
+  - `last_activity_at` se mueve con **cualquier** request de la app (p. ej. refetch en background de React Query), no solo con interacción humana. El tracker del front lo mitiga y el tope de 8 h ahora es real.
+  - `AuthLockdownGuard` cachea el estado 5 s en proceso → hasta 5 s de propagación entre instancias. Aceptable para una contención con SLA de minutos. `fail-open` deliberado (fail-closed encerraría a las autoridades fuera del panel) + break-glass `AUTH_LOCKDOWN_ALLOWLIST`.
+  - El flujo anónimo de VOTAR-377 FASE 2 (`credentials:'omit'`, sin cookie) y la `VoterJwtStrategy` NO se ven afectados: no hay `refresh_session` para votantes y es otra estrategia.
+- **User Stories relacionadas**: VOTAR-492, VOTAR-347 (rol PAUSER / contención), VOTAR-370 (bitácora encadenada), VOTAR-377 (flujo anónimo), VOTAR-314 (JWKS RS256)
+- **PRs**: back (migraciones + servicios + controllers + guard + tests unit/e2e), front (tracker + panel de seguridad + tests), Contexto (DER + clases + secuencia Sprint 7)
+- **Archivo nuevo**: `diagramas/sprint-7/secuencia-revocacion-sesiones-votar-492.mmd` (+ DER y diagrama de clases del Sprint 7 editados in-place)
+
+---
+
 ## [2026-09-07] — Sprint 7 — VOTAR-486 no se puede eliminar comicio antes de oficializar
 
 - **Tipo de cambio**: apertura de `diagramas/sprint-7/` (copia de Sprint 6 + cambio aplicado; norma: no editar in-place el Sprint 6 ya entregado)

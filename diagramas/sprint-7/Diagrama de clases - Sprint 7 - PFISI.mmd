@@ -7,6 +7,12 @@
 %% - VOTAR-486: EleccionesService.eliminarEleccion pasa a softRemove (borrado
 %%   lógico); Eleccion suma fechaEliminacion (@DeleteDateColumn) — sin nuevas
 %%   clases de dominio
+%% - VOTAR-492 (§12.2 — Plan de respuesta a incidentes): RefreshTokenService suma
+%%   validateActiveSession / revokeSessionsByUser / revokeAllSessions /
+%%   listActiveSessions; RefreshSession suma lastActivityAt y revokedReason;
+%%   JwtStrategy.validate pasa a async y consulta refresh_session (claim `sid`);
+%%   nuevos SessionAdminController y AuthLockdownGuard; ConfiguracionSistema suma
+%%   authBloqueo*
 %% Hereda Sprint 6 (evolución respecto a Sprint 5):
 %% - VOTAR-474: escrutinio multi-categoría on-chain — castSignedVote/recordVote
 %%   aceptan candidatoIds[] (EIP-712 domain v2); VoteUpdated por cada id
@@ -403,7 +409,55 @@ classDiagram
         +actaAperturaPlantilla JSON
         +actaCierrePlantilla JSON
         +actaAperturaModo String
+        +authBloqueoAlcance String
+        +authBloqueoMotivo String
+        +authBloqueoDesde Date
+        +authBloqueoPor String
     }
+
+    %% VOTAR-492 §12.2 — hardening de sesiones para respuesta a incidentes.
+    class RefreshSession {
+        <<entidad TypeORM>>
+        +idSession Number
+        +tokenHash String
+        +identificadorSso String
+        +sub String
+        +expiresAt Date
+        +lastActivityAt Date
+        +revokedAt Date
+        +revokedReason String
+    }
+
+    class RefreshTokenService {
+        <<servicio>>
+        +issueSession(identity) Promise
+        +rotateSession(refreshToken) Promise
+        +revokeSession(refreshToken, motivo) Promise~boolean~
+        +validateActiveSession(idSession) Promise~RefreshSession~
+        +listActiveSessions(filtro) Promise
+        +revokeSessionsByUser(input) Promise~number~
+        +revokeAllSessions(motivo, exceptIdSession) Promise~number~
+    }
+
+    class SessionAdminController {
+        <<controller — auth/sessions>>
+        +listar(req) Promise
+        +cerrarOtras(req) Promise
+        +revocarPorUsuario(dto, req) Promise
+        +revocarTodas(dto, req) Promise
+    }
+
+    class AuthLockdownGuard {
+        <<guard>>
+        +canActivate(context) Promise~boolean~
+        -getBloqueoState() Promise
+    }
+
+    RefreshTokenService --> RefreshSession : gestiona
+    SessionAdminController --> RefreshTokenService : usa
+    AuthLockdownGuard --> ConfiguracionSistema : consulta bloqueo
+
+    note for RefreshTokenService "VOTAR-492 §12.2 — rotateSession rota token_hash\nin-place (preserva id_session y expires_at). El access\ntoken JWT lleva el claim `sid`; JwtStrategy.validate\n(ahora async) llama validateActiveSession en cada\nrequest del panel → revocación instantánea y timeout\npor inactividad. logout es idempotente (cookies +\nDB de forma atómica)."
 
     %% VOTAR-466 — reemplaza el disco local (/uploads) como almacenamiento
     %% de imágenes electorales. Sin relación de composición formal con
