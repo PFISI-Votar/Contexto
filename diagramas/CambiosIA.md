@@ -4,6 +4,31 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-12] — Sprint 7 — VOTAR-498 hardening integral de base de datos y encriptación en reposo
+
+- **Tipo de cambio**: edición in-place de los diagramas del Sprint 7 (sprint en curso) + nuevo diagrama de secuencia
+- **Motivo**:
+  - El análisis Threagile reportó tres riesgos abiertos sobre PostgreSQL: `unencrypted-communication` (las tres rutas de conexión del backend — TypeORM runtime, CLI de migraciones, `pg_dump`/`pg_restore` — viajaban en texto plano; el propio C4 lo documentaba como `technology "TCP/IP"` / `"libpq / TCP"`), `unencrypted-asset` in-progress (no existía ningún `ValueTransformer` de TypeORM en el repo; `autoridad_electoral.totp_secret` — el secreto compartido TOTP del 2FA — y `nombre`, más `refresh_session.email/nombre`, estaban en `varchar` plano) y `unguarded-direct-datastore-access` (sin `pg_hba.conf`, `postgresql.conf` ni firewall versionados en ningún repo).
+  - El documento de dominio asumía red privada pero reconocía explícitamente que no había SSL forzado en la configuración de TypeORM.
+  - Se descarta cifrar `autoridad_electoral.email`: es la clave de búsqueda del login SSO (`AuthService.findOrCreateAutoridad`, `where: [{ identificadorSso }, { email }]`); cifrarla exigiría un blind index (`email_hash` HMAC indexado) fuera del alcance de esta US. Queda documentado como excepción, cubierta por el cifrado de volumen/disco del proveedor (pendiente manual).
+  - Se descarta `pgcrypto` para el cifrado de columnas: la clave viajaría al motor como parte de la sentencia SQL y quedaría expuesta en `log_statement`/`pg_stat_activity` — el mismo actor (acceso directo a la base) que este control busca sacar del alcance. Cifrado del lado de la aplicación (`node:crypto`, AES-256-GCM) en su lugar.
+- **Cambios específicos**:
+  1. DER Sprint 7: `AUTORIDAD_ELECTORAL.nombre` y el hasta ahora no modelado `totp_secret` (VOTAR-458, faltaba en el diagrama) pasan a `text` con nota de cifrado AES-256-GCM; `email` anotado como excepción deliberada (clave de búsqueda SSO). Nuevo bloque de comentario sobre TLS/pg_hba/firewall (infraestructura, sin entidad nueva). `REFRESH_SESSION.email/nombre` también quedan cifrados a nivel de código pero esa entidad todavía no está modelada en el DER de `dev` — depende del merge de VOTAR-492, no de esta US.
+  2. Diagrama de clases Sprint 7: nuevas clases `DatabaseSslConfig` (`resolveDatabaseSsl`, `buildLibpqSslEnv`, `isDatabaseProductionEnv`), `FieldEncryption` (`encryptField`/`decryptField`/`resolveFieldKey`) y `EncryptedColumnTransformer`; `AutoridadElectoral` suma el atributo `totpSecret`; asociaciones hacia `BackupService` (misma política TLS para `pg_dump`/`pg_restore`) y notas con el formato del ciphertext y el comportamiento fail-closed.
+  3. `votar.c4`: las 6 relaciones del backend hacia `db` (los 5 esquemas + `backupService`) pasan de `"TCP/IP"`/`"libpq / TCP"` a variantes con TLS (`verify-ca`/`verify-full`); descripción de `db` y de `dataAccess` actualizada con el resumen del hardening.
+  4. Nuevo `diagramas/sprint-7/secuencia-hardening-db-votar-498.mmd`: arranque fail-closed (Joi rechaza `DB_SSL_MODE=disable` en producción; `resolveDatabaseSsl` rechaza `verify-full` sin `DB_SSL_CA`), handshake TLS exitoso, escritura/lectura de `totp_secret` a través del transformer, qué ve un acceso directo al disco/backup (ciphertext), y rechazo de un cliente sin TLS por `pg_hba.conf`.
+  5. Backend (repo `back`): `src/config/database-ssl.config.ts` (resolutor TLS único, reusado por TypeORM runtime, `data-source.ts` de migraciones y `backup.service.ts`); `src/common/crypto/` (`field-encryption.ts` + `encrypted-column.transformer.ts`); transformer aplicado en `AutoridadElectoral.totpSecret/nombre` y `RefreshSession.email/nombre`; migración `1787600000000-CifradoEnReposoPii` (ALTER COLUMN a `text` + backfill idempotente); `deploy/postgres/` (`postgresql.conf`, `pg_hba.conf`/`pg_hba.dev.conf`, `generate-dev-certs.sh`, `docker-compose.db-tls.yml`) y `deploy/firewall/` (nftables/ufw); envs `DB_SSL_MODE/DB_SSL_CA/DB_SSL_CERT/DB_SSL_KEY/DB_SSL_SERVERNAME`, `DB_ENCRYPTION_KEY`.
+- **Nota / deuda**:
+  - `autoridad_electoral.email` permanece en claro (ver "Motivo"); su protección depende del cifrado de disco/volumen del proveedor de infraestructura, fuera del alcance de este repo.
+  - El `docker-compose.yml` de la raíz del monorepo (no versionado en ningún repo del equipo) no se modificó: publica el puerto de PostgreSQL al host para que pgAdmin/DBeaver sigan funcionando. El TLS de desarrollo se aplica vía `docker-compose.override.yml` (plantilla en `back/deploy/postgres/docker-compose.db-tls.yml`), ya cubierto por el `.gitignore` de la raíz.
+  - `pg_hba.conf` de producción y la regla de firewall traen placeholders (`<DB_NAME>`, `<BACKEND_CIDR>`, `<BACKEND_IP>`) a completar por el equipo de infraestructura al desplegar — no hay un CIDR de backend real definido en ningún repo todavía.
+  - La rotación de `DB_ENCRYPTION_KEY` requiere un script one-off de re-cifrado por lotes (documentado en `back/docs/VOTAR-498-hardening-db.md`); no hay automatización todavía.
+- **User Stories relacionadas**: VOTAR-498, VOTAR-388 (respaldos cifrados, complementario), VOTAR-458 (TOTP 2FA, cuyo secreto ahora se cifra), VOTAR-370/372 (audit_log — explícitamente fuera de alcance por sus triggers de inmutabilidad)
+- **PRs**: back (config TLS + cifrado de columnas + migración + deploy/postgres + deploy/firewall + tests unit/integración), Contexto (DER + clases + C4 + secuencia Sprint 7)
+- **Archivo nuevo**: `diagramas/sprint-7/secuencia-hardening-db-votar-498.mmd` (+ DER, diagrama de clases y `votar.c4` del Sprint 7 editados in-place)
+
+---
+
 ## [2026-09-07] — Sprint 7 — VOTAR-486 no se puede eliminar comicio antes de oficializar
 
 - **Tipo de cambio**: apertura de `diagramas/sprint-7/` (copia de Sprint 6 + cambio aplicado; norma: no editar in-place el Sprint 6 ya entregado)

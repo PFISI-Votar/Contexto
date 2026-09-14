@@ -96,7 +96,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | **Panel de Administración** | React 19 / TanStack Router | Gestión institucional del padrón y comicios |
 | **Dashboard Público** | React 19 / TanStack Query / Recharts | Auditoría ciudadana: resumen, resultados, participación, re-voto, padrón, estado |
 | **API Backend** | NestJS 11 / TypeORM / PostgreSQL 16 | Motor off-chain: Merkle, reglas electorales, desvinculación de identidad, orquestación Sepolia |
-| **Base de Datos** | PostgreSQL 16 | Persistencia off-chain (configuración, padrón hasheado, audit log). **NO almacena votos ni PII** |
+| **Base de Datos** | PostgreSQL 16 | Persistencia off-chain (configuración, padrón hasheado, audit log). **NO almacena votos ni PII**. TLS obligatorio + cifrado AES-256-GCM en reposo de secretos (VOTAR-498) |
 | **Ecosistema On-Chain** | Solidity ^0.8.24 / OpenZeppelin v5 / Hardhat | Smart contracts de lógica electoral inmutable (Sepolia testnet) |
 
 ### 4.3 Componentes clave del API Backend
@@ -384,13 +384,21 @@ Las 4 solapas configurables solo pueden ocultarse mientras el comicio no cerró;
 
 Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **403** cuando la solapa fue ocultada por `GET/PUT /elecciones/:id/visibilidad-dashboard` (admin, VOTAR-459) y el comicio no cerró.
 
-### Sprint 6 — en curso
+### Sprint 7 — en curso
+
+| Ticket | Estado | Descripción |
+|---|---|---|
+| VOTAR-486 | Mergeado | Borrado lógico de `eleccion` (`fecha_eliminacion`) — evita que el trigger de inmutabilidad de `audit_log` bloquee el `DELETE` físico de un comicio con bitácora asociada |
+| VOTAR-492 | En revisión | Hardening de sesiones: revocación masiva y timeout por inactividad — claim `sid`, rotación in-place de `refresh_session`, `AuthLockdownGuard` |
+| VOTAR-498 | En revisión | Hardening integral de PostgreSQL — TLS obligatorio (fail-closed en producción) en TypeORM/migraciones/`pg_dump`, cifrado AES-256-GCM en reposo de `autoridad_electoral.totp_secret/nombre` y `refresh_session.email/nombre`, `pg_hba.conf` + firewall restringidos al backend |
+
+### Sprint 6 — entregas principales
 
 | Ticket | Estado | Descripción |
 |---|---|---|
 | VOTAR-459 | Implementado | Visibilidad configurable de solapas del Dashboard Público (Resultados/Participación/Re-voto/Transacciones), enforcement 403 en backend |
 | VOTAR-466 | Implementado | Persistencia de imágenes electorales en PostgreSQL (`imagen_electoral` bytea; `GET /imagenes/:id`) |
-| VOTAR-388 | En revisión | Respaldos diarios cifrados AES-256-GCM de PostgreSQL (`src/backups/`, retención 30d, offsite opcional, alertas mail) |
+| VOTAR-388 | Mergeado | Respaldos diarios cifrados AES-256-GCM de PostgreSQL (`src/backups/`, retención 30d, offsite opcional, alertas mail) |
 
 ### Sprint 5 — entregas principales
 
