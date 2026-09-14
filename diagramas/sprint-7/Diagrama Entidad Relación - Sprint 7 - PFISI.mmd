@@ -6,6 +6,11 @@
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
 %% Evolución Sprint 7:
+%% - VOTAR-497: RELAYER_CAPACIDAD — token opaco de un solo uso para que el relayer
+%%   pague el gas de castSignedVote. Solo token_hash + id_eleccion; sin votante_hash,
+%%   hoja, nullifier, selección ni txHash (invariante VOTAR-379). Las claves
+%%   operativas NO son entidades: viven en un vault (archivo cifrado o KMS) y se
+%%   hidratan antes de arrancar Nest. En runtime real se rechaza provider=env.
 %% - VOTAR-486: ELECCION.fecha_eliminacion — borrado lógico del comicio. El DELETE
 %%   físico dispara el ON DELETE SET NULL de AUDIT_LOG.id_eleccion, bloqueado por
 %%   el trigger de inmutabilidad de audit_log (VOTAR-372)
@@ -418,6 +423,22 @@ erDiagram
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
+    %% RELAYER DE GAS (VOTAR-497)
+    %% El cliente ya no tiene VITE_PRIVATE_KEY. La emisión autenticada y el
+    %% broadcast anónimo no comparten fila: no hay votante_hash ni contenido
+    %% de voto. El token en claro no se persiste (solo sha256).
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    RELAYER_CAPACIDAD {
+        uuid id_capacidad PK "Identificador de la capacidad"
+        string token_hash UK "sha256 del token opaco (32 bytes). El token en claro no se guarda"
+        int id_eleccion FK "Comicio para el que se emitió. El cast de otra elección no consume esta fila"
+        datetime expira_en "TTL (default 120s, acotado 15s–600s). Vencida no llega a la chain"
+        datetime consumida_en "Uso único. Null hasta el cast atómico. Se libera solo si el fallo es previo al submit"
+        datetime emitida_en "Alta"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
     %% AUDITORÍA Y TRAZABILIDAD
     %% ═══════════════════════════════════════════════════════════════════════
 
@@ -533,6 +554,10 @@ erDiagram
     %% relacionan entre sí: la desvinculación identidad↔credencial es estructural.
     ELECCION ||--o{ CREDENCIAL_VALIDACION : "emite credenciales anónimas"
     ELECCION ||--o{ EMISION_CREDENCIAL : "cuenta emisiones por votante"
+
+    %% --- Relayer de gas (VOTAR-497) ---
+    %% RELAYER_CAPACIDAD no se relaciona con CREDENCIAL_VALIDACION, VOTO ni VOTANTE.
+    ELECCION ||--o{ RELAYER_CAPACIDAD : "autoriza un broadcast de gas"
 
     %% --- Auditoría y trazabilidad ---
     ELECCION ||--o{ AUDIT_LOG : "registra eventos"

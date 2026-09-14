@@ -16,7 +16,9 @@ sequenceDiagram
   BUD->>Seed: getOrCreateElectionSeed(idEleccion, votanteScope)
   Note over Seed: VOTAR-452 bug 4: legajos distintos → seeds distintos
 
-  Votante->>RPC: castSignedVote (1er sufragio)
+  Votante->>BUD: Confirma sufragio
+  BUD->>API: POST /relayer/cast (VOTAR-497; el cliente no paga gas)
+  API->>RPC: castSignedVote (1er sufragio)
   RPC->>Ballot: recordVote + cooldown on-chain
   Ballot-->>BUD: SignedVoteCast (txHash)
   BUD->>BUD: buildAnchorFromOnChain → localStorage
@@ -34,6 +36,7 @@ sequenceDiagram
   Rev->>DB: votos_consumidos >= target → idempotent return
 
   Votante->>BUD: Tras cooldown → 2do sufragio
-  BUD->>RPC: castSignedVote (mismo nullifier LAST_WINS)
+  BUD->>API: POST /relayer/cast (re-voto LAST_WINS, VOTAR-497)
+  API->>RPC: castSignedVote (mismo nullifier LAST_WINS)
   BUD->>API: POST registrar-consumo { votosObjetivo: 2 }
   Rev->>DB: votos_consumidos=2 (cooldown gate off-chain VOTAR-325)

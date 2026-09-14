@@ -94,6 +94,12 @@ model {
     description "VOTAR-386: proveedor secundario activado en <1s cuando el principal falla o agota free tier"
   }
 
+  secretsVault = externalSystem "Vault de secretos (VOTAR-497)" {
+    #offchain
+    technology "AES-256-GCM + scrypt / KMS (software wrap o HTTP)"
+    description "Guarda las claves operativas fuera del .env en runtime real. Providers: encrypted-file (npm run vault:seal) o kms. Desarrollo y test pueden usar env; producción (DEVELOPMENT!=true y NODE_ENV!=test) lo rechaza"
+  }
+
   backupOffsite = externalSystem "Almacenamiento Offsite de Backups" {
     #offchain
     technology "Volumen remoto / bucket montado (BACKUP_REMOTE_DIR)"
@@ -148,7 +154,7 @@ model {
       }
       blockchainClient = component "Cliente Blockchain BUD" {
         technology "viem"
-        description "VOTAR-358: ensambla castSignedVote (nullifier, selectionHash, merkleProof, signature EIP-712), estima gas (+10%), reintenta errores de red (máx. 3) y espera confirmación. El gas lo paga un transmitter de plataforma (testnet); la firma del voto sigue siendo de la billetera efímera"
+        description "VOTAR-497: ya no arma un wallet ni estima gas. Pide un token de relayer con la sesión y envía el sufragio firmado en un POST anónimo (credentials omit). Si el relayer devolvió txHash, no reintenta el broadcast. El recibo se espera por RPC público. La firma del voto sigue siendo de la billetera efímera; VITE_PRIVATE_KEY no existe en el cliente"
       }
     }
     
@@ -257,6 +263,14 @@ model {
       electoralImageService = component "Almacenamiento de Imágenes Electorales (VOTAR-466)" {
         technology "NestJS Service / sharp / PostgreSQL bytea"
         description "Reemplaza el disco local del contenedor (/uploads), que perdía archivos al recrear el contenedor mientras la fila de dominio persistía. Normaliza y optimiza a WebP con presupuesto de tamaño por tipo (candidato-foto, lista-logo, logo-institucional); persiste los bytes en imagen_electoral. GET /imagenes/:idImagen sirve el contenido, público, con ETag/Cache-Control immutable"
+      }
+      relayerService = component "Relayer de gas (VOTAR-497)" {
+        technology "NestJS Service / ethers v6 / RELAYER_PRIVATE_KEY"
+        description "Paga el gas de castSignedVote para que la clave transmisora no esté en el bundle. POST /relayer/autorizacion (JWT votante, sin cuerpo de voto) emite un token opaco de un solo uso; la BD guarda solo sha256. POST /relayer/cast es anónimo (sin cookie): consume el token, arma la Merkle proof en el servidor y hace broadcast. No persiste votante_hash, nullifier, selección ni txHash. Si el fallo es previo al submit, libera el token. El contrato no exige un rol de relayer: msg.sender solo paga gas"
+      }
+      vaultService = component "Vault de secretos (VOTAR-497)" {
+        technology "AES-256-GCM / KMS / hidratación pre-NestFactory"
+        description "Clasifica PRIVATE_KEY, RELAYER_PRIVATE_KEY, VALIDATOR_PRIVATE_KEY, FAUCET_MASTER_PRIVATE_KEY, JWT_PRIVATE_KEY y BACKUP_ENCRYPTION_KEY. En runtime real superpone los valores del vault sobre process.env antes de crear la app, así ConfigService no lee un .env en claro. Producción rechaza SECRETS_VAULT_PROVIDER=env"
       }
       entidadFirmas = component "Entidad de Firmas Digitales — Tercero de Confianza (VOTAR-377)" {
         technology "NestJS Service / ethers v6 EIP-712 / VALIDATOR_PRIVATE_KEY"
@@ -542,7 +556,16 @@ model {
   votar.api.merklePublisherService -> votar.api.dataAccess "Actualiza MERKLE_TREE (PUBLICADO_ON_CHAIN, tx_hash)" { technology "TypeORM" }
 
   // Frontends -> Blockchain (Web3)
-  votar.bud.blockchainClient -> rpc "Envía castSignedVote (payload + proof + firma); transmitter paga gas" { technology "JSON-RPC/HTTPS" }
+  votar.bud.blockchainClient -> votar.api.relayerService "POST /relayer/autorizacion (JWT, sin voto) y POST /relayer/cast anónimo (VOTAR-497)" { technology "HTTPS / JSON, credentials:omit en el cast" }
+  votar.bud.blockchainClient -> rpc "Solo espera el recibo (eth_getTransactionReceipt). No firma ni paga gas" { technology "JSON-RPC/HTTPS" }
+  votar.api.relayerService -> rpc "castSignedVote; RELAYER_PRIVATE_KEY paga gas" { technology "JSON-RPC/HTTPS" }
+  votar.api.relayerService -> votar.api.dataAccess "INSERT/UPDATE relayer_capacidad (token_hash, uso único; sin identidad ni voto)" { technology "TypeORM" }
+  votar.api.relayerService -> votar.api.merkleBuilder "Proof de servidor por hoja; ignora la proof del cliente"
+  votar.api.relayerService -> votar.api.vaultService "Lee RELAYER_PRIVATE_KEY ya hidratada"
+  votar.api.entidadFirmas -> votar.api.vaultService "Lee VALIDATOR_PRIVATE_KEY ya hidratada"
+  votar.api.faucetService -> votar.api.vaultService "Lee FAUCET_MASTER_PRIVATE_KEY ya hidratada"
+  votar.api.backupService -> votar.api.vaultService "Lee BACKUP_ENCRYPTION_KEY ya hidratada"
+  votar.api.vaultService -> secretsVault "Desella claves operativas (encrypted-file o KMS) antes de NestFactory"
   votar.bud.cryptoEngine -> votar.bud.cooldownClock "Ancla unlockAt tras cast on-chain (VOTAR-449/452)"
   votar.bud.cooldownClock -> votar.bud.blockchainClient "Bloquea reintento mientras remaining > 0"
   votar.bud.pendingCastRecovery -> votar.bud.blockchainClient "Reanuda receipt wait post-F5 (VOTAR-445)"
@@ -698,7 +721,7 @@ views {
   // Vista dinámica del flujo de sufragio
   dynamic view sufragio_flow {
     title "Flujo de Emisión de Sufragio con Desvinculación de Identidad (Componentes)"
-    description "Incluye paso 0: publicación de Merkle Root on-chain por la autoridad antes de apertura del comicio."
+    description "VOTAR-497: el cliente firma el sufragio pero no paga gas. Autoriza un token con la sesión y el relayer hace el broadcast. Incluye paso 0: publicación de Merkle Root on-chain por la autoridad antes de apertura del comicio."
 
     // Fase previa: publicación de padrón on-chain
     autoridad -> votar.panel.rootPublisher "0a. Solicita publicación de Merkle Root calculada"
@@ -713,17 +736,21 @@ views {
     sso -> votar.api.jwtValidator "4. Retorna claims de identidad legal"
     votar.api.identityDecoupler -> votar.api.merkleBuilder "5. Genera credencial anónima y calcula Merkle Proof off-chain"
     votar.api.apiRouter -> votar.bud.proofRequester "6. Entrega Merkle Proof del votante"
-    votar.bud.cryptoEngine -> votar.bud.blockchainClient "7. Firma sufragio EIP-712 y calcula nulificador localmente"
-    votar.bud.blockchainClient -> rpc "8. Envía castSignedVote(payload, sig, proof) a la red (transmitter paga gas)"
-    rpc -> votar.contracts.ballotContract "9. Transmite transacción castSignedVote() a la EVM"
-    votar.contracts.ballotContract -> votar.contracts.merkleRootStore "10. Consulta Merkle Root activa del comicio"
-    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "11. MerkleProof.verify(proof, root, leaf): valida padrón; revierte InvalidMerkleProof si falla (US-339)"
-    votar.contracts.ballotContract -> votar.contracts.ozECDSA "12. ECDSA.recover: verifica firma EIP-712 del votante (VOTAR-357)"
-    votar.contracts.ballotContract -> votar.contracts.voteRegistry "13. Registra/sobrescribe voto por nullifier (último voto cuenta)"
-    votar.contracts.ballotContract -> votar.contracts.tallyContract "14. Actualiza contadores por delta"
-    votar.contracts.ballotContract -> ethereum "15. Emite SignedVoteCast(electionId, voterLeaf, nullifier, selectionHash, signer)"
-    votar.bud.blockchainClient -> votar.api.apiRouter "16. POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373, sin cookies SSO)"
-    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "17. Indexa receipt (1× getTransactionReceipt, append-only)"
+    votar.bud.cryptoEngine -> votar.bud.blockchainClient "7. Firma sufragio EIP-712 y calcula nulificador localmente (sin clave de gas)"
+    votar.bud.blockchainClient -> votar.api.relayerService "8. POST /relayer/autorizacion (JWT; no envía el voto)"
+    votar.api.relayerService -> votar.api.dataAccess "8b. Persiste sha256 del token (relayer_capacidad)"
+    votar.bud.blockchainClient -> votar.api.relayerService "9. POST /relayer/cast (credentials omit; token + voto firmado)"
+    votar.api.relayerService -> votar.api.vaultService "9b. RELAYER_PRIVATE_KEY desde el vault"
+    votar.api.relayerService -> rpc "10. castSignedVote; el relayer paga gas"
+    rpc -> votar.contracts.ballotContract "11. Transmite transacción castSignedVote() a la EVM"
+    votar.contracts.ballotContract -> votar.contracts.merkleRootStore "12. Consulta Merkle Root activa del comicio"
+    votar.contracts.ballotContract -> votar.contracts.ozMerkleProof "13. MerkleProof.verify(proof, root, leaf): valida padrón; revierte InvalidMerkleProof si falla (US-339)"
+    votar.contracts.ballotContract -> votar.contracts.ozECDSA "14. ECDSA.recover: verifica firma EIP-712 del votante (VOTAR-357)"
+    votar.contracts.ballotContract -> votar.contracts.voteRegistry "15. Registra/sobrescribe voto por nullifier (último voto cuenta)"
+    votar.contracts.ballotContract -> votar.contracts.tallyContract "16. Actualiza contadores por delta"
+    votar.contracts.ballotContract -> ethereum "17. Emite SignedVoteCast(electionId, voterLeaf, nullifier, selectionHash, signer)"
+    votar.bud.blockchainClient -> votar.api.apiRouter "18. POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373, sin cookies SSO)"
+    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "19. Indexa receipt (1× getTransactionReceipt, append-only)"
   }
 
   dynamic view auditoria_publica_flow {
@@ -767,7 +794,8 @@ views {
     votante -> votar.bud.selection "9. GET boleta-digital post-cierre"
     votar.bud.selection -> votar.api.apiRouter "10. consulta BUD"
     votar.api.apiRouter -> votar.bud.selection "11. HTTP 410 Gone (VOTAR-321)"
-    votar.bud.blockchainClient -> rpc "12. castSignedVote (bypass UI)"
+    votar.bud.blockchainClient -> votar.api.relayerService "12. POST /relayer/cast post-cierre (el cliente ya no tiene clave de gas)"
+    votar.api.relayerService -> rpc "12b. castSignedVote"
     rpc -> votar.contracts.ballotContract "13. _assertElectionAcceptingVotes"
     votar.contracts.ballotContract -> votar.bud.blockchainClient "14. revert ElectionClosed"
 
@@ -809,7 +837,8 @@ views {
     description "Índice append-only en PostgreSQL; sin eth_getLogs en lectura del dashboard (fix Alchemy Free tier)."
 
     votante -> votar.bud.blockchainClient "A1. Confirma sufragio firmado"
-    votar.bud.blockchainClient -> rpc "A2. castSignedVote → SignedVoteCast (txHash)"
+    votar.bud.blockchainClient -> votar.api.relayerService "A2. POST /relayer/cast (VOTAR-497) → txHash"
+    votar.api.relayerService -> rpc "A2b. castSignedVote → SignedVoteCast"
     votar.bud.blockchainClient -> votar.api.apiRouter "A3. POST /votos/transaccion-publica { txHash } (credentials: omit)"
     votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "A4. registrarVotoPublico(id, txHash)"
     votar.api.transaccionBlockchainIndexer -> rpc "A5. eth_getTransactionReceipt (1 RPC, no scan)"
@@ -836,7 +865,7 @@ views {
     rpc -> votar.api.apiRouter "6. EscrutinioResponseDto (cache max-age 3s)"
     votar.api.apiRouter -> votar.dashboard.statsViewer "7. render Recharts + subscribe WS"
 
-    votante -> rpc "8. castSignedVote(candidateIds[]) → VoteCast + VoteUpdated×N (VOTAR-474)"
+    votar.api.relayerService -> rpc "8. castSignedVote(candidateIds[]) → VoteCast + VoteUpdated×N (VOTAR-474/497)"
     rpc -> votar.contracts.ballotContract "9. castSignedVote"
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "10. recordVote(candidateIds[]) — tallies multi-categoría"
     votar.api.apiRouter -> votar.dashboard.statsViewer "11. poller detecta delta → resultados:actualizados (≤5s UAT-01)"
@@ -866,7 +895,7 @@ views {
     votar.api.pausaComicioService -> votar.api.rpcFailover "4. pause(reason) Ballot + Registry"
     votar.api.rpcFailover -> votar.contracts.ballotContract "5. EnforcedPause en castSignedVote"
     votar.api.pausaComicioService -> votar.api.dataAccess "6. pausada=true"
-    votante -> votar.bud.blockchainClient "7. castSignedVote → revert"
+    votante -> votar.bud.blockchainClient "7. Intenta emitir; el relayer recibe revert EnforcedPause"
     auditor -> rpc "8. getParticipationStats (lectura OK — UAT-04)"
     rpc -> votar.contracts.auditViewContract "9. view sin whenNotPaused"
   }
@@ -876,13 +905,13 @@ views {
     description "Ancla localStorage + registrarConsumo(votosObjetivo) evita doble conteo y reset de countdown."
 
     votante -> votar.bud.cryptoEngine "1. getOrCreateElectionSeed(idEleccion, JWT sub)"
-    votante -> votar.bud.blockchainClient "2. castSignedVote → SignedVoteCast"
+    votante -> votar.bud.blockchainClient "2. POST /relayer/cast → SignedVoteCast (VOTAR-497)"
     votar.bud.blockchainClient -> votar.bud.cooldownClock "3. persist CooldownAnchor (localStorage)"
     votar.bud.blockchainClient -> votar.api.apiRouter "4. POST registrar-consumo { votosObjetivo: N }"
     votar.api.apiRouter -> votar.api.revotePolicyService "5. lock pessimista + idempotent sync"
     votar.api.revotePolicyService -> votar.api.dataAccess "6. UPSERT registro_intento_sufragio"
     votar.bud.cooldownClock -> votante "7. countdown desde unlockAt (no reinicia a minIntervalo)"
-    votante -> votar.bud.blockchainClient "8. 2do cast tras cooldown → LAST_WINS overwrite"
+    votante -> votar.bud.blockchainClient "8. 2do cast tras cooldown, vía relayer → LAST_WINS overwrite"
   }
 
   dynamic view acta_apertura_flow {

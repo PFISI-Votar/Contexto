@@ -15,9 +15,10 @@ sequenceDiagram
   participant PG as PostgreSQL<br/>(transaccion_blockchain)
   participant RPC as Sepolia RPC
 
-  Note over Votante,RPC: Flujo A — Escritura (voto confirmado)
+  Note over Votante,RPC: Flujo A — Escritura (voto confirmado). El gas lo paga el relayer (VOTAR-497); el cliente no llama castSignedVote
   Votante->>BUD: Confirma sufragio firmado
-  BUD->>RPC: castSignedVote → SignedVoteCast
+  BUD->>API: POST /relayer/cast (anónimo) → txHash
+  API->>RPC: castSignedVote → SignedVoteCast
   RPC-->>BUD: txHash + blockNumber
   BUD->>API: POST /votos/transaccion-publica { txHash }<br/>(credentials: omit)
   API->>Idx: registrarVotoPublico(id, txHash)

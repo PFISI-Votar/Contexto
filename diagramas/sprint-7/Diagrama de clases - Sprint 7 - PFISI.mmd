@@ -4,6 +4,11 @@
 %% UTN FRVM — Equipo 09 — Sprint 7
 %% ============================================================================
 %% Evolución Sprint 7:
+%% - VOTAR-497: RelayerService paga el gas de castSignedVote. El cliente deja
+%%   de tener VITE_PRIVATE_KEY. RelayerCapacidad es un token opaco de un solo
+%%   uso (sin identidad ni selección). VaultService hidrata las claves
+%%   operativas desde archivo cifrado o KMS antes de NestFactory; en runtime
+%%   real se rechaza provider=env.
 %% - VOTAR-486: EleccionesService.eliminarEleccion pasa a softRemove (borrado
 %%   lógico); Eleccion suma fechaEliminacion (@DeleteDateColumn) — sin nuevas
 %%   clases de dominio
@@ -487,6 +492,36 @@ classDiagram
     EntidadFirmasService ..> FirmaInstitucionalService : firma EIP-712 Validation
     FirmaInstitucionalService ..> ContratoBoleta : verifyingContract del dominio EIP-712
 
+    %% ═══ Relayer de gas y vault de secretos (VOTAR-497) ═══
+
+    class RelayerCapacidad {
+        <<entidad TypeORM — sin identidad ni voto>>
+        +idCapacidad String
+        +tokenHash Hash
+        +idEleccion int
+        +expiraEn DateTime
+        +consumidaEn DateTime
+        +emitidaEn DateTime
+    }
+
+    class RelayerService {
+        <<servicio NestJS — RELAYER_PRIVATE_KEY>>
+        +autorizar(idEleccion int) RelayToken
+        +emitirCast(idEleccion int, relayToken String, votoFirmado SignedVote) TxHash
+    }
+
+    class VaultService {
+        <<servicio NestJS — hidrata antes de NestFactory>>
+        +getSecret(name ClassifiedSecretName) String
+        +listClassifiedNames() ClassifiedSecretName[]
+    }
+
+    RelayerService "1" --o "0..*" RelayerCapacidad : emite y consume (uso único)
+    RelayerService ..> VaultService : lee RELAYER_PRIVATE_KEY
+    RelayerService ..> ContratoBoleta : broadcast castSignedVote (paga gas)
+    RelayerService ..> MerkleTree : proof de servidor, no la del cliente
+    FirmaInstitucionalService ..> VaultService : lee VALIDATOR_PRIVATE_KEY
+
     class ArchivarComicioService {
         <<servicio NestJS>>
         +archivarManual(idEleccion int, actorId String) void
@@ -643,11 +678,13 @@ classDiagram
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
-    note for ContratoBoleta "VOTAR-339/357/377: Merkle + EIP-712 + validatorSignature.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ndigest EIP-712 domain v2 firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
+    note for ContratoBoleta "VOTAR-339/357/377: Merkle + EIP-712 + validatorSignature.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ndigest EIP-712 domain v2 firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain.\nVOTAR-497: msg.sender solo paga gas; no hay rol de relayer.\nEl cliente ya no firma la tx: la paga RelayerService."
     note for RegistroIntentoSufragio "VOTAR-328/451/452: claveIntento opaca\n(JWT sub hash). votosObjetivo sync idempotente\ntras cast on-chain; lock pessimista evita doble consumo."
     note for CooldownAnchor "VOTAR-449/452: ancla unlockAt en reloj del nodo;\npersiste en localStorage por (idEleccion, votanteScope).\nSobrevive cierre de pestaña; no reinicia countdown espurio."
     note for VistaAuditoria "VOTAR-453: merkleRootConsistente compara\nraíz on-chain vs PADRON_ELECTORAL.hash_padron.\npoliticaRevoto=DISABLED si !revoteEnabled."
     note for RegistroVoto "VOTAR-474: recordVote(candidatoIds[]) incrementa\ncada tally; 1 VoteCast/boleta + VoteUpdated por id.\nVOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
     note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). VOTAR-367: getElectionState +\nmerkleRootStore para ficha técnica pública.\nverifyReceipt usa ancla anónima (nullifier)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
-    note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."
+    note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto.\nVOTAR-497: firma el sufragio con la billetera efímera;\nno posee la clave que paga el gas."
+    note for RelayerCapacidad "VOTAR-497: token de un solo uso.\nSin votante_hash, hoja, nullifier, selección ni txHash.\nLa emisión autenticada y el cast anónimo no comparten fila."
+    note for VaultService "VOTAR-497: PRIVATE_KEY, RELAYER_PRIVATE_KEY,\nVALIDATOR_PRIVATE_KEY, FAUCET_MASTER_PRIVATE_KEY,\nJWT_PRIVATE_KEY, BACKUP_ENCRYPTION_KEY.\nProducción rechaza SECRETS_VAULT_PROVIDER=env."
