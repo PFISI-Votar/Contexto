@@ -7,6 +7,12 @@
 %% - VOTAR-486: EleccionesService.eliminarEleccion pasa a softRemove (borrado
 %%   lógico); Eleccion suma fechaEliminacion (@DeleteDateColumn) — sin nuevas
 %%   clases de dominio
+%% - VOTAR-492 (§12.2 — Plan de respuesta a incidentes): RefreshTokenService suma
+%%   validateActiveSession / revokeSessionsByUser / revokeAllSessions /
+%%   listActiveSessions; RefreshSession suma lastActivityAt y revokedReason;
+%%   JwtStrategy.validate pasa a async y consulta refresh_session (claim `sid`);
+%%   nuevos SessionAdminController y AuthLockdownGuard; ConfiguracionSistema suma
+%%   authBloqueo*
 %% - VOTAR-498: hardening integral de PostgreSQL — resolveDatabaseSsl (TLS
 %%   estricto en TypeORM runtime, migraciones y pg_dump/pg_restore) +
 %%   encryptedColumn/field-encryption (AES-256-GCM en reposo sobre
@@ -409,7 +415,57 @@ classDiagram
         +actaAperturaPlantilla JSON
         +actaCierrePlantilla JSON
         +actaAperturaModo String
+        +authBloqueoAlcance String
+        +authBloqueoMotivo String
+        +authBloqueoDesde Date
+        +authBloqueoPor String
     }
+
+    %% VOTAR-492 §12.2 — hardening de sesiones para respuesta a incidentes.
+    class RefreshSession {
+        <<entidad TypeORM>>
+        +idSession Number
+        +tokenHash String
+        +identificadorSso String
+        +sub String
+        +email String
+        +nombre String
+        +expiresAt Date
+        +lastActivityAt Date
+        +revokedAt Date
+        +revokedReason String
+    }
+
+    class RefreshTokenService {
+        <<servicio>>
+        +issueSession(identity) Promise
+        +rotateSession(refreshToken) Promise
+        +revokeSession(refreshToken, motivo) Promise~boolean~
+        +validateActiveSession(idSession) Promise~RefreshSession~
+        +listActiveSessions(filtro) Promise
+        +revokeSessionsByUser(input) Promise~number~
+        +revokeAllSessions(motivo, exceptIdSession) Promise~number~
+    }
+
+    class SessionAdminController {
+        <<controller — auth/sessions>>
+        +listar(req) Promise
+        +cerrarOtras(req) Promise
+        +revocarPorUsuario(dto, req) Promise
+        +revocarTodas(dto, req) Promise
+    }
+
+    class AuthLockdownGuard {
+        <<guard>>
+        +canActivate(context) Promise~boolean~
+        -getBloqueoState() Promise
+    }
+
+    RefreshTokenService --> RefreshSession : gestiona
+    SessionAdminController --> RefreshTokenService : usa
+    AuthLockdownGuard --> ConfiguracionSistema : consulta bloqueo
+
+    note for RefreshTokenService "VOTAR-492 §12.2 — rotateSession rota token_hash\nin-place (preserva id_session y expires_at). El access\ntoken JWT lleva el claim `sid`; JwtStrategy.validate\n(ahora async) llama validateActiveSession en cada\nrequest del panel → revocación instantánea y timeout\npor inactividad. logout es idempotente (cookies +\nDB de forma atómica)."
 
     %% VOTAR-466 — reemplaza el disco local (/uploads) como almacenamiento
     %% de imágenes electorales. Sin relación de composición formal con
@@ -617,10 +673,11 @@ classDiagram
     %% VOTAR-498 — hardening de PostgreSQL
     DatabaseSslConfig ..> BackupService : buildLibpqSslEnv() inyecta PGSSLMODE/PGSSLROOTCERT
     AutoridadElectoral ..> EncryptedColumnTransformer : totpSecret / nombre (columna text)
+    RefreshSession ..> EncryptedColumnTransformer : email / nombre (columna text)
     EncryptedColumnTransformer ..> FieldEncryption : encryptField() / decryptField()
 
     note for DatabaseSslConfig "VOTAR-498: TLS obligatorio hacia PostgreSQL — DB_SSL_MODE\n(disable|require|verify-ca|verify-full). Fail-closed: producción\n(DEVELOPMENT=false) rechaza 'disable' y exige DB_SSL_CA para\nverify-ca/verify-full. Única fuente de verdad reusada por TypeORM\nruntime, DataSource de migraciones y pg_dump/pg_restore."
-    note for FieldEncryption "VOTAR-498: AES-256-GCM en reposo (node:crypto), sal de derivación\npropia (votar-field-v1) distinta de BACKUP_ENCRYPTION_KEY. Formato\nenc:v1:<base64(iv|authTag|ciphertext)>. DB_ENCRYPTION_KEY requerida\nen producción; passthrough en claro en desarrollo sin clave.\nTambién cifra RefreshSession.email/nombre — esa entidad aún no está\nmodelada en este diagrama (pendiente de merge de VOTAR-492)."
+    note for FieldEncryption "VOTAR-498: AES-256-GCM en reposo (node:crypto), sal de derivación\npropia (votar-field-v1) distinta de BACKUP_ENCRYPTION_KEY. Formato\nenc:v1:<base64(iv|authTag|ciphertext)>. DB_ENCRYPTION_KEY requerida\nen producción; passthrough en claro en desarrollo sin clave.\nTambién cifra RefreshSession.email/nombre (VOTAR-492, mergeado en\nSprint 7)."
 
     TransaccionesPublicService --> TransaccionBlockchainService : listar
     TransaccionBlockchainService ..> ContratoBoleta : getTransactionReceipt / parse

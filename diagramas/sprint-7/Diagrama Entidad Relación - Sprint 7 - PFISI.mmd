@@ -9,6 +9,15 @@
 %% - VOTAR-486: ELECCION.fecha_eliminacion — borrado lógico del comicio. El DELETE
 %%   físico dispara el ON DELETE SET NULL de AUDIT_LOG.id_eleccion, bloqueado por
 %%   el trigger de inmutabilidad de audit_log (VOTAR-372)
+%% - VOTAR-492 (§12.2 — Plan de respuesta a incidentes): REFRESH_SESSION suma
+%%   last_activity_at (timeout por inactividad) y revoked_reason (trazabilidad de
+%%   la revocación masiva). CONFIGURACION_SISTEMA suma auth_bloqueo_* (interruptor
+%%   de bloqueo de flujos de autenticación SSO). AUDIT_LOG.tipo_evento suma
+%%   SESION_REVOCADA y BLOQUEO_AUTENTICACION
+%% - VOTAR-498: hardening integral de PostgreSQL — TLS obligatorio (sin entidad
+%%   nueva) + cifrado AES-256-GCM en reposo sobre AUTORIDAD_ELECTORAL.nombre/
+%%   totp_secret y REFRESH_SESSION.email/nombre; AUTORIDAD_ELECTORAL.email queda
+%%   en claro a propósito (clave de búsqueda del login SSO)
 %% Hereda Sprint 6:
 %% - VOTAR-474: escrutinio multi-categoría on-chain (candidateIds[] en VoteRegistry;
 %%   eventos VoteCast + VoteUpdated por id) — sin cambio de entidades off-chain
@@ -237,6 +246,25 @@ erDiagram
         datetime fecha_asignacion "Fecha de asignación"
     }
 
+    %% VOTAR-492 §12.2 — sesión de refresh del Panel de Administración. NO tiene
+    %% FK física a AUTORIDAD_ELECTORAL: identificador_sso es texto del SSO y
+    %% también hay sesiones de rol `voter` sin fila en autoridad_electoral. El
+    %% access token JWT lleva el claim `sid` = id_session; el guard consulta
+    %% esta tabla en cada request para revocación instantánea.
+    REFRESH_SESSION {
+        int id_session PK "Identificador de la sesión"
+        string token_hash UK "SHA-256 del refresh token (rotado in-place)"
+        string identificador_sso "Nick institucional del SSO/OIDC"
+        string sub "Subject del token (legajo)"
+        string email "Email (nullable); VOTAR-498: cifrado AES-256-GCM en reposo (columna text)"
+        string nombre "Nombre (nullable); VOTAR-498: cifrado AES-256-GCM en reposo (columna text)"
+        datetime expires_at "Tope absoluto (JWT_REFRESH_EXPIRES_IN); no se extiende al rotar"
+        datetime last_activity_at "VOTAR-492 — última actividad real; caduca la sesión al superar SESSION_IDLE_TIMEOUT"
+        datetime revoked_at "Momento de revocación (nullable)"
+        string revoked_reason "VOTAR-492 — LOGOUT | INACTIVIDAD | EXPIRACION | REVOCACION_ADMIN | REVOCACION_GLOBAL | CIERRE_OTRAS_SESIONES"
+        datetime created_at "Alta de la sesión"
+    }
+
     %% ═══════════════════════════════════════════════════════════════════════
     %% SMART CONTRACT (Referencia off-chain al despliegue on-chain)
     %% ═══════════════════════════════════════════════════════════════════════
@@ -337,6 +365,10 @@ erDiagram
         jsonb acta_cierre_plantilla "Toggles secciones Acta de Cierre (VOTAR-375)"
         string acta_apertura_modo "SIMPLE | PERSONALIZADO"
         text acta_apertura_plantilla_texto "Cuerpo personalizado (modo PERSONALIZADO)"
+        string auth_bloqueo_alcance "VOTAR-492 §12.2 — NINGUNO | ADMIN | TODOS (bloqueo de flujos de autenticación institucional)"
+        string auth_bloqueo_motivo "Justificación del bloqueo, registrada en la bitácora (nullable)"
+        datetime auth_bloqueo_desde "Momento de activación del bloqueo (null si alcance = NINGUNO)"
+        string auth_bloqueo_por "ID ofuscado del operador que activó el bloqueo (nunca SSO en claro)"
         datetime fecha_actualizacion "Última modificación de plantillas"
     }
 
@@ -431,7 +463,7 @@ erDiagram
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada (nullable). FK ON DELETE SET NULL, pero VOTAR-486 usa soft delete de ELECCION: el valor histórico sobrevive porque la bitácora es append-only (VOTAR-372)"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA | SESION_REVOCADA | BLOQUEO_AUTENTICACION"
         datetime timestamp "Timestamp UTC del evento"
         string actor "Operador ofuscado (SHA-256+salt). ANONIMO para VOTO_EMITIDO — VOTAR-379/370"
         string descripcion "Descripción del evento (sin IP en claro)"
@@ -509,6 +541,9 @@ erDiagram
     %% PADRON_VOTANTE ya no referencia identidad civil; sólo persiste hash Keccak-256.
 
     %% --- Actores y elecciones (muchos a muchos) ---
+    %% VOTAR-492 — vínculo conceptual (SIN FK física): identificador_sso es texto
+    %% del SSO y hay sesiones rol `voter` sin fila en autoridad_electoral.
+    AUTORIDAD_ELECTORAL ||..o{ REFRESH_SESSION : "mantiene sesiones (sin FK)"
     AUTORIDAD_ELECTORAL ||--|{ AUTORIDAD_ELECCION : "tiene asignaciones"
     ELECCION ||--|{ AUTORIDAD_ELECCION : "administrada por"
     OBSERVADOR ||--o{ OBSERVADOR_ELECCION : "tiene asignaciones"
