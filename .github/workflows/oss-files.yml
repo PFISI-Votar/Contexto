@@ -1,0 +1,26 @@
+name: Open source files
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  regulatory-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Require LICENSE, README, CONTRIBUTING and SECURITY
+        run: |
+          missing=0
+          for file in LICENSE README.md CONTRIBUTING.md SECURITY.md; do
+            if [ ! -s "$file" ]; then
+              echo "Falta o está vacío: $file"
+              missing=1
+            fi
+          done
+          exit "$missing"
