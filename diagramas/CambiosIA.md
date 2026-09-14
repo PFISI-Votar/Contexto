@@ -4,6 +4,25 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-13] — Sprint 7 — VOTAR-487 cookies de sesión con SameSite=Strict
+
+- **Tipo de cambio**: edición in-place de C4 + Diagrama de clases + nota DER + secuencia en `diagramas/sprint-7/` (Sprint 7 ya abierto por VOTAR-486; no se edita Sprint 6)
+- **Motivo**:
+  - La política de seguridad exige cookies de access/refresh con `SameSite=Strict` además de `HttpOnly` y `Secure`. El backend las emitía y limpiaba con `SameSite=Lax`.
+  - El SSO de Autogestión es server-side (`POST /login` + fetch Basic). No hay redirect OAuth en el browser, así que ninguna cookie de estado tiene que sobrevivir una navegación cross-site desde el IdP. `SameSite=Strict` no rompe el login.
+  - Las rutas anónimas de voto (FASE 2 VOTAR-377, indexación VOTAR-373) ya usan `credentials:'omit'` y no dependen de estas cookies.
+- **Cambios específicos**:
+  1. C4: `bud.auth`, `panel.adminAuth` y `jwtValidator` documentan `HttpOnly` + `Secure` en producción + `SameSite=Strict`. Nueva dynamic view `sesion_cookies_samesite_strict`. El paso 2 del flujo de sufragio menciona el `Set-Cookie`.
+  2. Diagrama de clases: notas en `Votante` y `AutoridadElectoral` (sin nuevas clases de dominio).
+  3. DER: nota de evolución — el atributo no se persiste; no hay entidad ni columna nueva.
+  4. Nueva secuencia `secuencia-cookies-sesion-votar-487.mmd`: emisión y limpieza de las tres cookies, y llamada server-side a Autogestión.
+  5. `contexto-sistema.md`: nota de arquitectura y puntero de diagramas a `sprint-7/`.
+- **User Stories relacionadas**: VOTAR-487, US-312, US-313
+- **PRs**: back https://github.com/PFISI-Votar/back/pull/110, Contexto (esta PR)
+- **Archivos**: `diagramas/sprint-7/votar.c4`, `diagramas/sprint-7/Diagrama de clases - Sprint 7 - PFISI.mmd`, `diagramas/sprint-7/Diagrama Entidad Relación - Sprint 7 - PFISI.mmd`, `diagramas/sprint-7/secuencia-cookies-sesion-votar-487.mmd`, `contexto-sistema.md`
+
+---
+
 ## [2026-09-07] — Sprint 7 — VOTAR-486 no se puede eliminar comicio antes de oficializar
 
 - **Tipo de cambio**: apertura de `diagramas/sprint-7/` (copia de Sprint 6 + cambio aplicado; norma: no editar in-place el Sprint 6 ya entregado)

@@ -119,8 +119,8 @@ model {
       description "Interfaz para selección de candidatos, generación de claves ECC y firma de transacciones"
 
       auth = component "Módulo de Autenticación BUD" {
-        technology "React Context / OIDC"
-        description "Gestiona el inicio de sesión y obtención del token SSO para el votante"
+        technology "React Context / cookies HttpOnly"
+        description "Login de votante vía Autogestión UTN delegada al backend (US-312). La sesión queda en votar_voter_access_token (HttpOnly, Secure en producción, SameSite=Strict, TTL 30m, sin refresh — VOTAR-487). No hay redirect OAuth en el browser: el POST /auth/votante/login es same-site y la API llama a Autogestión server-side"
       }
       ballot = component "Selector de Candidatos" {
         technology "React Component"
@@ -157,8 +157,8 @@ model {
       description "Interfaz para la gestión institucional del padrón y reglas electorales"
 
       adminAuth = component "Módulo de Autenticación admin" {
-        technology "React / TanStack Router / cookies HttpOnly"
-        description "Login Panel de Gestión vía Autogestión UTN delegada al backend BFF (US-313). Mantiene sesión con cookies HttpOnly y estado de usuario en memoria; el guard consulta user.role=election_admin desde /auth/login, /auth/me o /auth/refresh (la validación autoritativa del JWT y del rol ocurre en backend). Ante acceso forzado sin rol, sondea GET /elecciones para obtener HTTP 403 y auditoría backend antes de mostrar /403"
+        technology "React / TanStack Router / cookies HttpOnly SameSite=Strict"
+        description "Login Panel de Gestión vía Autogestión UTN delegada al backend BFF (US-313). Sesión en votar_access_token y votar_refresh_token: HttpOnly, Secure en producción y SameSite=Strict (VOTAR-487); el logout limpia con los mismos atributos. El guard consulta user.role=election_admin desde /auth/login, /auth/me o /auth/refresh (la validación autoritativa del JWT y del rol ocurre en backend). Ante acceso forzado sin rol, sondea GET /elecciones para obtener HTTP 403 y auditoría backend antes de mostrar /403"
       }
       voterManager = component "Cargador de Padrón" {
         technology "React / PapaParse"
@@ -228,7 +228,7 @@ model {
       }
       jwtValidator = component "Validador JWT / OIDC" {
         technology "NestJS Passport JWT + Autogestión UTN (US-313)"
-        description "US-313 (interino): valida credenciales contra API Autogestión UTN, emite JWT propio (HS256) con claim role (election_admin | voter) según AUTORIDAD_ELECTORAL; RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
+        description "US-313 (interino): valida credenciales contra API Autogestión UTN server-side (POST /login + fetch Basic; no hay callback OAuth en el browser) y emite JWT propio (HS256) con claim role (election_admin | voter) en cookies HttpOnly, Secure en producción y SameSite=Strict (VOTAR-487). RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
       }
       rulesEngine = component "Motor de Reglas Electorales" {
         technology "TypeScript / Pydantic"
@@ -708,7 +708,7 @@ views {
 
     // Fase de votación
     votante -> votar.bud.auth "1. Inicia sesión contra SSO"
-    votar.bud.auth -> votar.api.apiRouter "2. Solicita token y validación"
+    votar.bud.auth -> votar.api.apiRouter "2. POST /auth/votante/login — Set-Cookie HttpOnly + SameSite=Strict (VOTAR-487)"
     votar.api.jwtValidator -> sso "3. Valida credenciales de identidad"
     sso -> votar.api.jwtValidator "4. Retorna claims de identidad legal"
     votar.api.identityDecoupler -> votar.api.merkleBuilder "5. Genera credencial anónima y calcula Merkle Proof off-chain"
@@ -916,5 +916,16 @@ views {
     votar.db -> votar.api.backupService "2. volcado temporal"
     votar.api.backupService -> backupOffsite "3. *.dump.enc cifrado AES-256-GCM + .sha256"
     backupOffsite -> autoridad "4. (si falla ENOSPC/integridad) mail crítico ALERT_EMAIL_TO"
+  }
+
+  dynamic view sesion_cookies_samesite_strict {
+    title "Cookies de sesión SameSite=Strict (VOTAR-487)"
+    description "Access/refresh de autoridad y access de votante se emiten y limpian con HttpOnly, Secure en producción y SameSite=Strict. Autogestión es server-side: no hay cookie de estado que deba sobrevivir un redirect cross-site del IdP."
+
+    votante -> votar.bud.auth "1. Login same-site (sin navegación al IdP)"
+    votar.bud.auth -> votar.api.apiRouter "2. POST /auth/votante/login → Set-Cookie votar_voter_access_token HttpOnly SameSite=Strict"
+    votar.api.jwtValidator -> sso "3. Autogestión server-side (POST /login + Basic); no hay callback OAuth"
+    autoridad -> votar.panel.adminAuth "4. Login admin; cookies solo tras 2FA"
+    votar.panel.adminAuth -> votar.api.apiRouter "5. Set-Cookie access+refresh SameSite=Strict; logout las limpia con los mismos atributos"
   }
 }

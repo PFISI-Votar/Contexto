@@ -4,6 +4,10 @@
 %% UTN FRVM — Equipo 09 — Sprint 7
 %% ============================================================================
 %% Evolución Sprint 7:
+%% - VOTAR-487: cookies de sesión (autoridad y votante) con HttpOnly + Secure
+%%   en producción + SameSite=Strict. Sin nuevas clases de dominio: el atributo
+%%   es de la emisión/limpieza HTTP, no de una entidad. SSO Autogestión sigue
+%%   siendo server-side (no hay redirect OAuth en el browser).
 %% - VOTAR-486: EleccionesService.eliminarEleccion pasa a softRemove (borrado
 %%   lógico); Eleccion suma fechaEliminacion (@DeleteDateColumn) — sin nuevas
 %%   clases de dominio
@@ -650,4 +654,5 @@ classDiagram
     note for RegistroVoto "VOTAR-474: recordVote(candidatoIds[]) incrementa\ncada tally; 1 VoteCast/boleta + VoteUpdated por id.\nVOTAR-346: VoteCast indexado (electionId, voterHash).\nVOTAR-350: views de participación y verifyReceipt.\nVOTAR-341: revoteEnabled inmutable (default false);\nsegundo recordVote → RevoteDisabled.\nPause bloquea escritura, no lectura."
     note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). VOTAR-367: getElectionState +\nmerkleRootStore para ficha técnica pública.\nverifyReceipt usa ancla anónima (nullifier)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
-    note for Votante "US-312: autenticación institucional.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."
+    note for AutoridadElectoral "VOTAR-487: sesión en cookies HttpOnly\n(votar_access_token + votar_refresh_token),\nSecure en producción y SameSite=Strict.\nEl logout limpia con los mismos atributos."
+    note for Votante "US-312: autenticación institucional.\nVOTAR-487: votar_voter_access_token HttpOnly,\nSecure en producción, SameSite=Strict, sin refresh.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."

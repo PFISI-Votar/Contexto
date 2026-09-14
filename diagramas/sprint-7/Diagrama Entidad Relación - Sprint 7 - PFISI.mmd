@@ -6,6 +6,10 @@
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
 %% Evolución Sprint 7:
+%% - VOTAR-487: cookies de sesión (SameSite=Strict, HttpOnly, Secure en
+%%   producción) no se persisten. No hay columna ni entidad nueva: el atributo
+%%   viaja en Set-Cookie. refresh_session sigue guardando el hash del refresh,
+%%   no la política de cookie.
 %% - VOTAR-486: ELECCION.fecha_eliminacion — borrado lógico del comicio. El DELETE
 %%   físico dispara el ON DELETE SET NULL de AUDIT_LOG.id_eleccion, bloqueado por
 %%   el trigger de inmutabilidad de audit_log (VOTAR-372)
