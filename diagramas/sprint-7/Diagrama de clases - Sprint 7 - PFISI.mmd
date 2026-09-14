@@ -13,6 +13,11 @@
 %%   JwtStrategy.validate pasa a async y consulta refresh_session (claim `sid`);
 %%   nuevos SessionAdminController y AuthLockdownGuard; ConfiguracionSistema suma
 %%   authBloqueo*
+%% - VOTAR-498: hardening integral de PostgreSQL — resolveDatabaseSsl (TLS
+%%   estricto en TypeORM runtime, migraciones y pg_dump/pg_restore) +
+%%   encryptedColumn/field-encryption (AES-256-GCM en reposo sobre
+%%   AutoridadElectoral.totpSecret/nombre y RefreshSession.email/nombre) +
+%%   configuración de red versionada (pg_hba.conf, firewall)
 %% Hereda Sprint 6 (evolución respecto a Sprint 5):
 %% - VOTAR-474: escrutinio multi-categoría on-chain — castSignedVote/recordVote
 %%   aceptan candidatoIds[] (EIP-712 domain v2); VoteUpdated por cada id
@@ -188,6 +193,7 @@ classDiagram
         -String nombre
         -String email
         -String rol
+        -String totpSecret
         +crearComicio(eleccion Eleccion) Eleccion
         +configurarAccesoVotantes(config ConfiguracionComicio) void
         +definirRolesPostulacion(categorias Categoria[]) void
@@ -422,6 +428,8 @@ classDiagram
         +tokenHash String
         +identificadorSso String
         +sub String
+        +email String
+        +nombre String
         +expiresAt Date
         +lastActivityAt Date
         +revokedAt Date
@@ -589,6 +597,26 @@ classDiagram
         +onModuleDestroy() void
     }
 
+    class DatabaseSslConfig {
+        <<config — VOTAR-498>>
+        +resolveDatabaseSsl(get EnvGetter, isProduction boolean) TlsOptions
+        +buildLibpqSslEnv(get EnvGetter) ProcessEnv
+        +isDatabaseProductionEnv(get EnvGetter) boolean
+    }
+
+    class FieldEncryption {
+        <<crypto util — VOTAR-498>>
+        +encryptField(plaintext String, key Buffer) String
+        +decryptField(value String, key Buffer) String
+        +resolveFieldKey() Buffer
+    }
+
+    class EncryptedColumnTransformer {
+        <<TypeORM ValueTransformer — VOTAR-498>>
+        +to(value String) String
+        +from(value String) String
+    }
+
     class TransaccionBlockchain {
         <<entidad TypeORM>>
         +hashTransaccion Hash PK
@@ -641,6 +669,15 @@ classDiagram
     BackupScheduler ..> BackupService : tick diario (BACKUP_HOUR)
 
     note for BackupService "VOTAR-388: pg_dump → AES-256-GCM → src/backups/*.dump.enc\n+ sidecar .sha256. Plain dump se elimina al terminar.\nBACKUP_REMOTE_DIR opcional (offsite); retención ≥30d.\nFallo (ENOSPC, integridad) → mail crítico a ALERT_EMAIL_TO.\nCLI: npm run db:backup / db:restore."
+
+    %% VOTAR-498 — hardening de PostgreSQL
+    DatabaseSslConfig ..> BackupService : buildLibpqSslEnv() inyecta PGSSLMODE/PGSSLROOTCERT
+    AutoridadElectoral ..> EncryptedColumnTransformer : totpSecret / nombre (columna text)
+    RefreshSession ..> EncryptedColumnTransformer : email / nombre (columna text)
+    EncryptedColumnTransformer ..> FieldEncryption : encryptField() / decryptField()
+
+    note for DatabaseSslConfig "VOTAR-498: TLS obligatorio hacia PostgreSQL — DB_SSL_MODE\n(disable|require|verify-ca|verify-full). Fail-closed: producción\n(DEVELOPMENT=false) rechaza 'disable' y exige DB_SSL_CA para\nverify-ca/verify-full. Única fuente de verdad reusada por TypeORM\nruntime, DataSource de migraciones y pg_dump/pg_restore."
+    note for FieldEncryption "VOTAR-498: AES-256-GCM en reposo (node:crypto), sal de derivación\npropia (votar-field-v1) distinta de BACKUP_ENCRYPTION_KEY. Formato\nenc:v1:<base64(iv|authTag|ciphertext)>. DB_ENCRYPTION_KEY requerida\nen producción; passthrough en claro en desarrollo sin clave.\nTambién cifra RefreshSession.email/nombre (VOTAR-492, mergeado en\nSprint 7)."
 
     TransaccionesPublicService --> TransaccionBlockchainService : listar
     TransaccionBlockchainService ..> ContratoBoleta : getTransactionReceipt / parse

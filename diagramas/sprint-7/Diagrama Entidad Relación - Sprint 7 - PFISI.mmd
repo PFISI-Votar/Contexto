@@ -14,6 +14,10 @@
 %%   la revocación masiva). CONFIGURACION_SISTEMA suma auth_bloqueo_* (interruptor
 %%   de bloqueo de flujos de autenticación SSO). AUDIT_LOG.tipo_evento suma
 %%   SESION_REVOCADA y BLOQUEO_AUTENTICACION
+%% - VOTAR-498: hardening integral de PostgreSQL — TLS obligatorio (sin entidad
+%%   nueva) + cifrado AES-256-GCM en reposo sobre AUTORIDAD_ELECTORAL.nombre/
+%%   totp_secret y REFRESH_SESSION.email/nombre; AUTORIDAD_ELECTORAL.email queda
+%%   en claro a propósito (clave de búsqueda del login SSO)
 %% Hereda Sprint 6:
 %% - VOTAR-474: escrutinio multi-categoría on-chain (candidateIds[] en VoteRegistry;
 %%   eventos VoteCast + VoteUpdated por id) — sin cambio de entidades off-chain
@@ -202,14 +206,21 @@ erDiagram
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% ACTORES DEL SISTEMA (Usuarios)
+    %% VOTAR-498 — hardening de PostgreSQL: TLS obligatorio (verify-ca/
+    %% verify-full en producción) en las tres rutas de conexión (TypeORM,
+    %% migraciones, pg_dump/pg_restore) + pg_hba.conf restringido al backend
+    %% + firewall a nivel de host. Ver back/deploy/postgres/ y
+    %% back/docs/VOTAR-498-hardening-db.md. No modela una entidad nueva —
+    %% es infraestructura, documentada en el C4 (relaciones hacia BD).
     %% ═══════════════════════════════════════════════════════════════════════
 
     AUTORIDAD_ELECTORAL {
         int id_autoridad PK "Identificador único de la autoridad"
-        string nombre "Nombre completo"
-        string email UK "Email de contacto"
+        string nombre "VOTAR-498: cifrado AES-256-GCM en reposo (columna text)"
+        string email UK "Email de contacto — en claro a propósito: clave de búsqueda del login SSO (VOTAR-498)"
         string rol "ELECTION_ADMIN | PAUSER | MERKLE_UPDATER"
         string identificador_sso "Identificador del SSO/OIDC"
+        string totp_secret "Secreto TOTP 2FA (VOTAR-458); VOTAR-498: cifrado AES-256-GCM en reposo (columna text, nullable)"
         datetime fecha_registro "Fecha de alta en el sistema"
     }
 
@@ -245,8 +256,8 @@ erDiagram
         string token_hash UK "SHA-256 del refresh token (rotado in-place)"
         string identificador_sso "Nick institucional del SSO/OIDC"
         string sub "Subject del token (legajo)"
-        string email "Email (nullable)"
-        string nombre "Nombre (nullable)"
+        string email "Email (nullable); VOTAR-498: cifrado AES-256-GCM en reposo (columna text)"
+        string nombre "Nombre (nullable); VOTAR-498: cifrado AES-256-GCM en reposo (columna text)"
         datetime expires_at "Tope absoluto (JWT_REFRESH_EXPIRES_IN); no se extiende al rotar"
         datetime last_activity_at "VOTAR-492 — última actividad real; caduca la sesión al superar SESSION_IDLE_TIMEOUT"
         datetime revoked_at "Momento de revocación (nullable)"
