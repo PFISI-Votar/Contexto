@@ -1,0 +1,47 @@
+%% VOTAR-497 — Relayer de gas y vault de secretos
+%% El cliente deja de tener VITE_PRIVATE_KEY (DoS por drenaje de gas).
+%% La emisión autenticada no ve el voto; el broadcast anónimo no ve la sesión
+%% (invariante VOTAR-379 / Ley 25.326). El contrato no exige un rol de relayer:
+%% msg.sender solo paga gas.
+
+sequenceDiagram
+  autonumber
+  actor Votante
+  participant BUD as BUD<br/>(vote-transmitter)
+  participant Auth as API — relayer/autorizacion<br/>(JWT votante)
+  participant Cast as API — relayer/cast<br/>(sin cookie)
+  participant Vault as VaultService
+  participant DB as relayer_capacidad
+  participant Padron as PadronService
+  participant RPC as Sepolia RPC
+  participant Ballot as BallotContract
+
+  Note over Vault,Vault: Antes de NestFactory, hydrateSecretsFromVault.<br/>Producción rechaza SECRETS_VAULT_PROVIDER=env.
+
+  rect rgb(235,245,255)
+    Note over BUD,DB: Autorización (AUTENTICADA, sin cuerpo de voto)
+    Votante->>BUD: Confirma sufragio ya firmado (billetera efímera)
+    BUD->>Auth: POST /elecciones/:id/relayer/autorizacion
+    Auth->>Auth: Roles + padrón + rate limit
+    Auth->>DB: INSERT token_hash=sha256(token), expira_en<br/>(sin votante_hash, nullifier ni selección)
+    Auth-->>BUD: 201 { relayToken, expiresAt }
+  end
+
+  rect rgb(235,255,235)
+    Note over BUD,Ballot: Broadcast (ANÓNIMO, credentials:'omit')
+    BUD->>Cast: POST /elecciones/:id/relayer/cast<br/>{ relayToken, voto firmado }
+    Cast->>DB: UPDATE consumida_en WHERE token_hash AND id_eleccion AND consumida_en IS NULL AND expira_en > now()
+    alt token ajeno, vencido o ya usado
+      Cast-->>BUD: 410 Gone (no llega a la chain)
+    else consumido
+      Cast->>Padron: obtenerProofVotante (proof de servidor, no la del cliente)
+      Cast->>Vault: getSecret(RELAYER_PRIVATE_KEY)
+      Cast->>RPC: castSignedVote (margen de gas 1.1)
+      RPC->>Ballot: msg.sender = relayer (solo paga gas)
+      Ballot-->>Cast: txHash
+      Cast-->>BUD: 201 { txHash }
+    end
+  end
+
+  Note over BUD,RPC: Si el fallo es previo al submit, se libera el token.<br/>Si ya hay txHash, el cliente no rebroadcasta: espera el recibo por RPC público.
+  BUD->>RPC: waitForTransactionReceipt (sin clave privada)

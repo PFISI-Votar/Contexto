@@ -13,6 +13,7 @@ sequenceDiagram
   participant Cred as CredencialValidacionService
   participant Firma as FirmaInstitucionalService<br/>(VALIDATOR_PRIVATE_KEY)
   participant DB as credencial_validacion / emision_credencial
+  participant Relayer as RelayerService<br/>(RELAYER_PRIVATE_KEY)
   participant RPC as Sepolia RPC
   participant Ballot as BallotContract
 
@@ -52,7 +53,8 @@ sequenceDiagram
 
   rect rgb(255,240,235)
     Note over BUD,Ballot: Enforcement on-chain (AC-4 / UAT-01 / UAT-03)
-    BUD->>RPC: castSignedVote(vote, merkleProof, signature, validatorSignature)
+    BUD->>Relayer: POST /elecciones/:id/relayer/cast (credentials omit)
+    Relayer->>RPC: castSignedVote(vote, merkleProof de servidor, signature, validatorSignature)
     RPC->>Ballot: _assertElectionAcceptingVotes
     Ballot->>Ballot: validatorSignature.length == 0 ? → revert MissingValidatorSignature
     Ballot->>Ballot: ECDSA.recover(Validation digest) ∈ VALIDATOR_ROLE ?<br/>→ revert InvalidValidatorSignature (payload alterado o firmante no autorizado)

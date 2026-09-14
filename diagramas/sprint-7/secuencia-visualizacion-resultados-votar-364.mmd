@@ -47,6 +47,7 @@ sequenceDiagram
     end
   end
 
-  Votante->>RPC: castSignedVote (candidateIds[])
+  Note over Poller,FE: El gas lo paga el relayer (VOTAR-497); el contrato sigue recibiendo candidateIds[]
+  Relayer->>RPC: castSignedVote (candidateIds[])
   RPC->>VR: recordVote → VoteCast + VoteUpdated×N
   Note over Poller,FE: Próximo ciclo del poller detecta delta en todas las categorías (VOTAR-474 / UAT-01)
