@@ -137,7 +137,8 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
   0b. Panel → RPC → MerkleRootStore.sol (almacena root on-chain)
 
 [Votante]
-  1. Inicia sesión → BUD.auth → SSO (OAuth2/OIDC)
+  1. Inicia sesión → BUD.auth → API (cookie HttpOnly + SameSite=Strict, VOTAR-487).
+     Autogestión se consulta server-side; no hay redirect OAuth en el browser
   2. Backend valida JWT, ejecuta identityDecoupler
   3. merkleBuilder genera MerkleProof individual (off-chain)
   4. BUD recibe MerkleProof
@@ -338,7 +339,8 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe los `candidateIds[]` del nullifier en cada re-voto mientras el comicio esté abierto (VOTAR-474). Post-cierre, inmutable.
 - **Nullifier** = derivado de `H(clavePublica, idEleccion)`. Permite unicidad por comicio sin revelar identidad.
 - **Sprint 1 (US-330)**: `PADRON_VOTANTE` eliminó FK a `VOTANTE`. Solo persiste `hash_hoja` (keccak-256).
-- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-6/` (última versión; el workflow sync-c4 publica `votar.c4` al repo `c4`).
+- **Diagramas de referencia**: ver `Contexto/diagramas/sprint-7/` (última versión; el workflow sync-c4 publica el `votar.c4` del sprint más alto al repo `c4`).
+- **Cookies de sesión (VOTAR-487)**: `votar_access_token`, `votar_refresh_token` y `votar_voter_access_token` se emiten y limpian con `HttpOnly`, `Secure` en producción y `SameSite=Strict`. El SSO de Autogestión es server-side, así que Strict no depende de un callback cross-site. FASE 2 (VOTAR-377) y la indexación anónima (VOTAR-373) siguen con `credentials:'omit'`.
 - **Visibilidad del dashboard público (VOTAR-459)**: `CONFIGURACION_COMICIO` agrega 4 flags (`mostrar_dashboard_resultados/participacion/revoto/transacciones`, default `true`) para ocultar solapas mientras el comicio no cerró. Enforcement con 403 vía `SeccionDashboardVisibleGuard` en los endpoints públicos correspondientes, no solo en el frontend.
 - **Archivado (VOTAR-322)**: `ARCHIVADA` es estado off-chain exclusivo. No escribe en Sepolia; el dashboard público sigue leyendo contratos on-chain.
 - **Pausa de emergencia (VOTAR-347)**: `eleccion.pausada` es ortogonal a `estado`. `whenNotPaused` bloquea `castSignedVote`; `AuditViewContract` sigue legible.
@@ -354,7 +356,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `PFISI-Votar/blockchain` | Hardhat / Solidity | `dev` | test + Slither |
 | `PFISI-Votar/back` | NestJS / TypeORM | `dev` | lint + test + e2e |
 | `PFISI-Votar/front` | React / Vite | `dev` | Prettier + ESLint + Vitest |
-| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-6/votar.c4`) |
+| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-7/votar.c4`) |
 
 ### Dashboard Público — secciones implementadas
 
@@ -383,6 +385,13 @@ Las 4 solapas configurables solo pueden ocultarse mientras el comicio no cerró;
 | `POST /elecciones/:id/votos/transaccion-publica` | Indexación anónima post-voto `{ txHash }` (VOTAR-373) |
 
 Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **403** cuando la solapa fue ocultada por `GET/PUT /elecciones/:id/visibilidad-dashboard` (admin, VOTAR-459) y el comicio no cerró.
+
+### Sprint 7 — en curso
+
+| Ticket | Estado | Descripción |
+|---|---|---|
+| VOTAR-486 | Documentado | Borrado lógico de `eleccion` (`fecha_eliminacion`) para no chocar con el trigger de `audit_log` |
+| VOTAR-487 | En revisión | Cookies de sesión con `SameSite=Strict` (además de `HttpOnly` y `Secure` en producción). SSO Autogestión server-side |
 
 ### Sprint 6 — en curso
 
