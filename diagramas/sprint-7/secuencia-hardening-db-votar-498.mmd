@@ -1,0 +1,56 @@
+%% VOTAR-498 — Hardening integral de PostgreSQL y cifrado en reposo
+%% UAT-01 TLS negociado | UAT-02 columna cifrada | UAT-03 pg_hba rechaza sin TLS
+%% UAT-04/05 fail-closed en producción sin TLS/CA configurada
+
+sequenceDiagram
+  autonumber
+  participant Boot as NestJS Bootstrap
+  participant Cfg as ConfigModule<br/>(Joi env.validation)
+  participant SSL as resolveDatabaseSsl<br/>(database-ssl.config.ts)
+  participant TypeORM as TypeOrmModule
+  participant PG as PostgreSQL 16<br/>(pg_hba.conf + TLS)
+  participant Repo as AutoridadElectoral<br/>Repository
+  participant Enc as encryptedColumn<br/>(field-encryption.ts)
+  actor DBA as Acceso directo a disco/backup
+  actor Rogue as Cliente no autorizado
+
+  Note over Boot,Cfg: Arranque — producción (DEVELOPMENT=false)
+
+  Boot->>Cfg: ConfigModule.forRoot()
+  alt DB_SSL_MODE=disable en producción
+    Cfg-->>Boot: Config validation error (Joi) — aborta (UAT-04)
+  else DB_SSL_MODE=verify-full sin DB_SSL_CA
+    Cfg->>SSL: resolveDatabaseSsl(get, isProduction=true)
+    SSL-->>Boot: throw "requiere DB_SSL_CA" — aborta (UAT-05)
+  else DB_SSL_MODE=verify-ca + DB_SSL_CA presente
+    Cfg->>SSL: resolveDatabaseSsl(get, isProduction=true)
+    SSL-->>TypeORM: { ca, rejectUnauthorized: true, checkServerIdentity }
+    TypeORM->>PG: handshake TLS 1.2+ (hostssl, scram-sha-256)
+    PG-->>TypeORM: conexión cifrada establecida (UAT-01)
+  end
+
+  Note over Repo,PG: Escritura — secreto TOTP de una autoridad electoral
+
+  Repo->>Enc: to(totpSecret) [ValueTransformer]
+  Enc->>Enc: encryptField(plaintext, DB_ENCRYPTION_KEY)<br/>AES-256-GCM, IV aleatorio
+  Enc-->>Repo: "enc:v1:<base64(iv|authTag|ciphertext)>"
+  Repo->>PG: INSERT/UPDATE autoridad_electoral (columna text)
+  PG-->>Repo: OK
+
+  Note over DBA,PG: UAT-02 — qué ve un acceso directo al disco/backup
+
+  DBA->>PG: SELECT totp_secret FROM autoridad_electoral
+  PG-->>DBA: "enc:v1:..." (ilegible sin DB_ENCRYPTION_KEY)
+
+  Note over Repo,PG: Lectura — el backend sí puede descifrar
+
+  Repo->>PG: SELECT totp_secret FROM autoridad_electoral
+  PG-->>Repo: "enc:v1:..."
+  Repo->>Enc: from(value) [ValueTransformer]
+  Enc->>Enc: decryptField(value, DB_ENCRYPTION_KEY)
+  Enc-->>Repo: totpSecret en claro (solo en RAM del proceso)
+
+  Note over PG: UAT-03 — origen no autorizado o sin TLS
+
+  Rogue->>PG: psql -h db (PGSSLMODE=disable)
+  PG-->>Rogue: rechazado — pg_hba.conf exige hostssl (no matching entry)
