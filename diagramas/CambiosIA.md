@@ -4,6 +4,40 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-18] — Sprint 7 — VOTAR-497 feedback de PR review
+
+- **Tipo de cambio**: correcciones in-place en `diagramas/sprint-7/` + `contexto-sistema.md`
+- **Motivo**: Feedback de review en la PR de VOTAR-497 (causalidad Ballot→BUD, códigos HTTP alineados al backend, auditoría, nota de `RelayerCapacidad`, Sprint 6 ya entregado).
+- **Cambios específicos**:
+  1. Secuencias 377 / 373 / 452: el `txHash` vuelve por Relayer/API → BUD (no Ballot/RPC → BUD directo).
+  2. C4 `votar.c4`: entre SignedVoteCast y POST `transaccion-publica` se inserta retorno `rpc → relayerService → blockchainClient` (pasos 18–19; renumerados 20–21).
+  3. Secuencia 364: se declara el participante `RelayerService`.
+  4. Secuencia relayer: HTTP `200` éxito / `401` token inválido; auditoría `RELAYER_CAPACIDAD_EMITIDA` y `RELAYER_CAST_ENVIADO`.
+  5. DER: `tipo_evento` suma esos dos eventos; nota de `RELAYER_CAPACIDAD` aclara una fila keyed por `token_hash` (INSERT then UPDATE) y aislamiento de contenido de voto.
+  6. Diagrama de clases: nota de `RelayerCapacidad` corregida (misma idea; `clave_intento` solo cooldown si aplica).
+  7. `contexto-sistema.md`: Sprint 6 pasa a «entregado»; Sprint 7 sigue «en curso».
+- **User Stories relacionadas**: VOTAR-497
+- **Archivos**: `diagramas/sprint-7/secuencia-*.mmd`, `votar.c4`, DER, clases, `CambiosIA.md`, `contexto-sistema.md`
+
+---
+
+## [2026-09-13] — Sprint 7 — VOTAR-497 relayer de gas y vault de secretos
+
+- **Tipo de cambio**: edición in-place de DER + Diagrama de clases + C4 + secuencias en `diagramas/sprint-7/` (sprint abierto por VOTAR-486; no se toca Sprint 6) + `contexto-sistema.md`
+- **Motivo**:
+  - `VITE_PRIVATE_KEY` vivía en el cliente y pagaba el gas de `castSignedVote`. Cualquiera con el bundle podía drenar esa cuenta (DoS).
+  - Las claves operativas residían en `.env` en claro (`missing-vault`).
+  - EIP-4337 se descartó: un relayer de backend alcanza el mismo cierre sin cambiar el contrato. Un relay autenticado del cuerpo del voto se descartó porque vincularía la sesión SSO con el sufragio.
+- **Cambios específicos**:
+  1. DER: nueva entidad `RELAYER_CAPACIDAD` (`token_hash` UK, `id_eleccion`, `expira_en`, `consumida_en`, `emitida_en`). Sin `votante_hash`, hoja, nullifier, selección ni `tx_hash`. Nota: las claves no son filas; viven en un vault.
+  2. Diagrama de clases: `RelayerCapacidad`, `RelayerService` (`autorizar`, `emitirCast`), `VaultService`. El relayer lee la Merkle proof en el servidor y hace el broadcast. `msg.sender` del contrato solo paga gas; no hay rol de relayer.
+  3. C4: componentes `relayerService` y `vaultService`, sistema externo `secretsVault`. El BUD ya no envía `castSignedVote`; pide un token con JWT y hace el cast con `credentials: omit`. El recibo se espera por RPC público.
+  4. Nueva secuencia `secuencia-relayer-vault-votar-497.mmd`. Secuencias de emisión de Sprint 7 (377, 373, 452, 364, 347) dejan de mostrar al cliente como pagador de gas.
+  5. `contexto-sistema.md`: paso 6 del flujo de sufragio, invariante de privacidad y tabla Sprint 7.
+- **User Stories relacionadas**: VOTAR-497, VOTAR-379 (desvinculación), VOTAR-377 (firma institucional, clave ahora en el vault), VOTAR-382 (gestor de secretos)
+- **PRs**: back #112, front #132, blockchain #56, Contexto (esta PR)
+- **Archivos**: `diagramas/sprint-7/*`, `diagramas/CambiosIA.md`, `contexto-sistema.md`
+
 ## [2026-09-14] — Sprint 7 — Merge dev → VOTAR-492: reconciliar RefreshSession con el cifrado de VOTAR-498
 
 - **Tipo de cambio**: resolución de conflictos de `git merge origin/dev` sobre esta rama (Contexto#43) + corrección de una nota desactualizada en el diagrama de clases (sin nueva carpeta de sprint: ambos cambios son del Sprint 7 en curso).

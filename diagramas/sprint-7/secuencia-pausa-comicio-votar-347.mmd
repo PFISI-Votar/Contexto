@@ -27,7 +27,8 @@ sequenceDiagram
 
   Votante->>BUD: Intenta emitir sufragio
   BUD->>BUD: eleccion.pausada → bloqueo UI (sin gas)
-  Votante->>RPC: castSignedVote (bypass UI)
+  Note over Votante,RPC: Un wallet con gas propio aún puede llamar el contrato; el cliente ya no tiene la clave de plataforma (VOTAR-497)
+  Votante->>RPC: castSignedVote (bypass UI, gas propio)
   RPC->>Ballot: revert EnforcedPause
 
   actor Auditor

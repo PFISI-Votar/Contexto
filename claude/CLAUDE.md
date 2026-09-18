@@ -69,7 +69,7 @@ Cada elección tiene composición 1:1 con:
 3. Cliente genera BILLETERA_EFIMERA con Web Crypto API (clave privada NUNCA sale del RAM del navegador)
 4. Cliente deriva NULLIFIER = hash(clavePublica + idEleccion)
 5. Cliente firma payload del voto con clave privada
-6. Cliente envía (votoFirmado + MerkleProof + nullifier) al Smart Contract en Sepolia
+6. Cliente pide un token de relayer (sesión, sin voto) y envía el sufragio firmado en un POST anónimo. El backend paga el gas (`castSignedVote`); el cliente no tiene clave transmisora
 7. Backend registra REGISTRO_NULLIFIER off-chain y TRANSACCION_BLOCKCHAIN
 8. Smart Contract emite evento → Backend persiste RECIBO_VOTACION
 9. Clave privada efímera se destruye del RAM

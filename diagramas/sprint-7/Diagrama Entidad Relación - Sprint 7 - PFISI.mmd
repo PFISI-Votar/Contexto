@@ -6,6 +6,11 @@
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
 %% Evolución Sprint 7:
+%% - VOTAR-497: RELAYER_CAPACIDAD — token opaco de un solo uso para que el relayer
+%%   pague el gas de castSignedVote. Solo token_hash + id_eleccion; sin votante_hash,
+%%   hoja, nullifier, selección ni txHash (invariante VOTAR-379). Las claves
+%%   operativas NO son entidades: viven en un vault (archivo cifrado o KMS) y se
+%%   hidratan antes de arrancar Nest. En runtime real se rechaza provider=env.
 %% - VOTAR-486: ELECCION.fecha_eliminacion — borrado lógico del comicio. El DELETE
 %%   físico dispara el ON DELETE SET NULL de AUDIT_LOG.id_eleccion, bloqueado por
 %%   el trigger de inmutabilidad de audit_log (VOTAR-372)
@@ -457,13 +462,30 @@ erDiagram
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
+    %% RELAYER DE GAS (VOTAR-497)
+    %% El cliente ya no tiene VITE_PRIVATE_KEY. Una fila keyed por token_hash:
+    %% INSERT en autorización, UPDATE en cast. El aislamiento es de contenido
+    %% de voto (sin votante_hash, hoja, nullifier, selección ni tx_hash), no de
+    %% tablas distintas. El token en claro no se persiste (solo sha256).
+    %% ═══════════════════════════════════════════════════════════════════════
+
+    RELAYER_CAPACIDAD {
+        uuid id_capacidad PK "Identificador de la capacidad"
+        string token_hash UK "sha256 del token opaco (32 bytes). El token en claro no se guarda"
+        int id_eleccion FK "Comicio para el que se emitió. El cast de otra elección no consume esta fila"
+        datetime expira_en "TTL (default 120s, acotado 15s–600s). Vencida no llega a la chain"
+        datetime consumida_en "Uso único. Null hasta el cast atómico. Se libera solo si el fallo es previo al submit"
+        datetime emitida_en "Alta"
+    }
+
+    %% ═══════════════════════════════════════════════════════════════════════
     %% AUDITORÍA Y TRAZABILIDAD
     %% ═══════════════════════════════════════════════════════════════════════
 
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada (nullable). FK ON DELETE SET NULL, pero VOTAR-486 usa soft delete de ELECCION: el valor histórico sobrevive porque la bitácora es append-only (VOTAR-372)"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA | SESION_REVOCADA | BLOQUEO_AUTENTICACION"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA | RELAYER_CAPACIDAD_EMITIDA | RELAYER_CAST_ENVIADO | SESION_REVOCADA | BLOQUEO_AUTENTICACION"
         datetime timestamp "Timestamp UTC del evento"
         string actor "Operador ofuscado (SHA-256+salt). ANONIMO para VOTO_EMITIDO — VOTAR-379/370"
         string descripcion "Descripción del evento (sin IP en claro)"
@@ -575,6 +597,10 @@ erDiagram
     %% relacionan entre sí: la desvinculación identidad↔credencial es estructural.
     ELECCION ||--o{ CREDENCIAL_VALIDACION : "emite credenciales anónimas"
     ELECCION ||--o{ EMISION_CREDENCIAL : "cuenta emisiones por votante"
+
+    %% --- Relayer de gas (VOTAR-497) ---
+    %% RELAYER_CAPACIDAD no se relaciona con CREDENCIAL_VALIDACION, VOTO ni VOTANTE.
+    ELECCION ||--o{ RELAYER_CAPACIDAD : "autoriza un broadcast de gas"
 
     %% --- Auditoría y trazabilidad ---
     ELECCION ||--o{ AUDIT_LOG : "registra eventos"
