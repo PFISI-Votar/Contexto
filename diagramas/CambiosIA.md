@@ -4,6 +4,23 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 
 ---
 
+## [2026-09-18] — Sprint 7 — VOTAR-497 feedback de PR review
+
+- **Tipo de cambio**: correcciones in-place en `diagramas/sprint-7/` + `contexto-sistema.md`
+- **Motivo**: Feedback de review en la PR de VOTAR-497 (causalidad Ballot→BUD, códigos HTTP alineados al backend, auditoría, nota de `RelayerCapacidad`, Sprint 6 ya entregado).
+- **Cambios específicos**:
+  1. Secuencias 377 / 373 / 452: el `txHash` vuelve por Relayer/API → BUD (no Ballot/RPC → BUD directo).
+  2. C4 `votar.c4`: entre SignedVoteCast y POST `transaccion-publica` se inserta retorno `rpc → relayerService → blockchainClient` (pasos 18–19; renumerados 20–21).
+  3. Secuencia 364: se declara el participante `RelayerService`.
+  4. Secuencia relayer: HTTP `200` éxito / `401` token inválido; auditoría `RELAYER_CAPACIDAD_EMITIDA` y `RELAYER_CAST_ENVIADO`.
+  5. DER: `tipo_evento` suma esos dos eventos; nota de `RELAYER_CAPACIDAD` aclara una fila keyed por `token_hash` (INSERT then UPDATE) y aislamiento de contenido de voto.
+  6. Diagrama de clases: nota de `RelayerCapacidad` corregida (misma idea; `clave_intento` solo cooldown si aplica).
+  7. `contexto-sistema.md`: Sprint 6 pasa a «entregado»; Sprint 7 sigue «en curso».
+- **User Stories relacionadas**: VOTAR-497
+- **Archivos**: `diagramas/sprint-7/secuencia-*.mmd`, `votar.c4`, DER, clases, `CambiosIA.md`, `contexto-sistema.md`
+
+---
+
 ## [2026-09-13] — Sprint 7 — VOTAR-497 relayer de gas y vault de secretos
 
 - **Tipo de cambio**: edición in-place de DER + Diagrama de clases + C4 + secuencias en `diagramas/sprint-7/` (sprint abierto por VOTAR-486; no se toca Sprint 6) + `contexto-sistema.md`

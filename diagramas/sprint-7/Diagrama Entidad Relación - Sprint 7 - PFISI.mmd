@@ -424,9 +424,10 @@ erDiagram
 
     %% ═══════════════════════════════════════════════════════════════════════
     %% RELAYER DE GAS (VOTAR-497)
-    %% El cliente ya no tiene VITE_PRIVATE_KEY. La emisión autenticada y el
-    %% broadcast anónimo no comparten fila: no hay votante_hash ni contenido
-    %% de voto. El token en claro no se persiste (solo sha256).
+    %% El cliente ya no tiene VITE_PRIVATE_KEY. Una fila keyed por token_hash:
+    %% INSERT en autorización, UPDATE en cast. El aislamiento es de contenido
+    %% de voto (sin votante_hash, hoja, nullifier, selección ni tx_hash), no de
+    %% tablas distintas. El token en claro no se persiste (solo sha256).
     %% ═══════════════════════════════════════════════════════════════════════
 
     RELAYER_CAPACIDAD {
@@ -445,7 +446,7 @@ erDiagram
     AUDIT_LOG {
         int id_log PK "Identificador del registro de auditoría"
         int id_eleccion FK "Elección asociada (nullable). FK ON DELETE SET NULL, pero VOTAR-486 usa soft delete de ELECCION: el valor histórico sobrevive porque la bitácora es append-only (VOTAR-372)"
-        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA"
+        string tipo_evento "LOGIN | VOTO_EMITIDO | ACCESO_DENEGADO | CONFIG_MODIFICADA | PADRON_CARGADO | COMICIO_ABIERTO | COMICIO_CERRADO | COMICIO_ARCHIVADO | COMICIO_PAUSADO | COMICIO_REANUDADO | ACTA_CIERRE_GENERADA | CREDENCIAL_VALIDACION_EMITIDA | FIRMA_VALIDACION_EMITIDA | RELAYER_CAPACIDAD_EMITIDA | RELAYER_CAST_ENVIADO"
         datetime timestamp "Timestamp UTC del evento"
         string actor "Operador ofuscado (SHA-256+salt). ANONIMO para VOTO_EMITIDO — VOTAR-379/370"
         string descripcion "Descripción del evento (sin IP en claro)"

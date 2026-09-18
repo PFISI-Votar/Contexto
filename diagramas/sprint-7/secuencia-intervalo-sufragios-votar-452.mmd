@@ -20,7 +20,8 @@ sequenceDiagram
   BUD->>API: POST /relayer/cast (VOTAR-497; el cliente no paga gas)
   API->>RPC: castSignedVote (1er sufragio)
   RPC->>Ballot: recordVote + cooldown on-chain
-  Ballot-->>BUD: SignedVoteCast (txHash)
+  Ballot-->>API: SignedVoteCast (txHash)
+  API-->>BUD: { txHash }
   BUD->>BUD: buildAnchorFromOnChain → localStorage
   Note over BUD: VOTAR-452: ancla sobrevive cierre de pestaña
 

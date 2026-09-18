@@ -19,7 +19,8 @@ sequenceDiagram
   Votante->>BUD: Confirma sufragio firmado
   BUD->>API: POST /relayer/cast (anónimo) → txHash
   API->>RPC: castSignedVote → SignedVoteCast
-  RPC-->>BUD: txHash + blockNumber
+  RPC-->>API: txHash
+  API-->>BUD: { txHash }
   BUD->>API: POST /votos/transaccion-publica { txHash }<br/>(credentials: omit)
   API->>Idx: registrarVotoPublico(id, txHash)
   Idx->>BC: getVoteParticipationByTxHash(txHash)

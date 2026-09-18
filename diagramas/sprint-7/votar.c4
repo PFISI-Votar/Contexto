@@ -749,8 +749,10 @@ views {
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "15. Registra/sobrescribe voto por nullifier (último voto cuenta)"
     votar.contracts.ballotContract -> votar.contracts.tallyContract "16. Actualiza contadores por delta"
     votar.contracts.ballotContract -> ethereum "17. Emite SignedVoteCast(electionId, voterLeaf, nullifier, selectionHash, signer)"
-    votar.bud.blockchainClient -> votar.api.apiRouter "18. POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373, sin cookies SSO)"
-    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "19. Indexa receipt (1× getTransactionReceipt, append-only)"
+    rpc -> votar.api.relayerService "18. Retorna txHash del castSignedVote"
+    votar.api.relayerService -> votar.bud.blockchainClient "19. 200 { txHash }"
+    votar.bud.blockchainClient -> votar.api.apiRouter "20. POST /votos/transaccion-publica { txHash } fire-and-forget (VOTAR-373, sin cookies SSO)"
+    votar.api.apiRouter -> votar.api.transaccionBlockchainIndexer "21. Indexa receipt (1× getTransactionReceipt, append-only)"
   }
 
   dynamic view auditoria_publica_flow {

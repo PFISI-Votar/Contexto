@@ -12,6 +12,7 @@ sequenceDiagram
   participant Cast as API — relayer/cast<br/>(sin cookie)
   participant Vault as VaultService
   participant DB as relayer_capacidad
+  participant Audit as AUDIT_LOG
   participant Padron as PadronService
   participant RPC as Sepolia RPC
   participant Ballot as BallotContract
@@ -24,7 +25,8 @@ sequenceDiagram
     BUD->>Auth: POST /elecciones/:id/relayer/autorizacion
     Auth->>Auth: Roles + padrón + rate limit
     Auth->>DB: INSERT token_hash=sha256(token), expira_en<br/>(sin votante_hash, nullifier ni selección)
-    Auth-->>BUD: 201 { relayToken, expiresAt }
+    Auth->>Audit: RELAYER_CAPACIDAD_EMITIDA (actor ofuscado)
+    Auth-->>BUD: 200 { relayToken, expiresAt }
   end
 
   rect rgb(235,255,235)
@@ -32,14 +34,15 @@ sequenceDiagram
     BUD->>Cast: POST /elecciones/:id/relayer/cast<br/>{ relayToken, voto firmado }
     Cast->>DB: UPDATE consumida_en WHERE token_hash AND id_eleccion AND consumida_en IS NULL AND expira_en > now()
     alt token ajeno, vencido o ya usado
-      Cast-->>BUD: 410 Gone (no llega a la chain)
+      Cast-->>BUD: 401 Unauthorized (no llega a la chain)
     else consumido
       Cast->>Padron: obtenerProofVotante (proof de servidor, no la del cliente)
       Cast->>Vault: getSecret(RELAYER_PRIVATE_KEY)
       Cast->>RPC: castSignedVote (margen de gas 1.1)
       RPC->>Ballot: msg.sender = relayer (solo paga gas)
       Ballot-->>Cast: txHash
-      Cast-->>BUD: 201 { txHash }
+      Cast->>Audit: RELAYER_CAST_ENVIADO (ANONIMO; sin nullifier/selección/txHash)
+      Cast-->>BUD: 200 { txHash }
     end
   end
 

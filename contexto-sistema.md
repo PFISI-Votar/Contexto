@@ -398,7 +398,7 @@ Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **4
 | VOTAR-486 | Implementado | Soft delete de comicio (`fecha_eliminacion`) para no chocar con la inmutabilidad de `audit_log` |
 | VOTAR-497 | En revisión | Relayer de gas (`relayer_capacidad`) y vault de claves operativas. El cliente deja de tener `VITE_PRIVATE_KEY` |
 
-### Sprint 6 — en curso
+### Sprint 6 — entregado
 
 | Ticket | Estado | Descripción |
 |---|---|---|

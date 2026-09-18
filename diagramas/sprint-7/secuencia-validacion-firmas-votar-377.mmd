@@ -60,7 +60,8 @@ sequenceDiagram
     Ballot->>Ballot: ECDSA.recover(Validation digest) ∈ VALIDATOR_ROLE ?<br/>→ revert InvalidValidatorSignature (payload alterado o firmante no autorizado)
     Ballot->>Ballot: Merkle proof + anti-doble-voto + firma efímera del votante
     Ballot->>Ballot: VoteRegistry.recordVote + emit SignedVoteCast
-    Ballot-->>BUD: txHash
+    Ballot-->>Relayer: txHash
+    Relayer-->>BUD: { txHash }
   end
 
   Note over Votante,Ballot: UAT-02: la validatorSignature en la calldata prueba "un integrante del<br/>padrón votó" — NO contiene voterLeaf, DNI ni nombre del elector.<br/>UAT-04: el auditor recupera la firma de cada SignedVoteCast y verifica<br/>hasRole(VALIDATOR_ROLE, signer) → presunción de integridad y autoría.
