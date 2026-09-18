@@ -14,7 +14,7 @@ Este archivo documenta todas las modificaciones realizadas a los diagramas de ar
 - **Cambios específicos**:
   1. C4: `bud.auth`, `panel.adminAuth` y `jwtValidator` documentan `HttpOnly` + `Secure` en producción + `SameSite=Strict`. Nueva dynamic view `sesion_cookies_samesite_strict`. El paso 2 del flujo de sufragio menciona el `Set-Cookie`.
   2. Diagrama de clases: notas en `Votante` y `AutoridadElectoral` (sin nuevas clases de dominio).
-  3. DER: nota de evolución — el atributo no se persiste; no hay entidad ni columna nueva.
+  3. DER: nota de evolución — el atributo no se persiste; no hay entidad ni columna nueva. Aclara que `refresh_session` existe en backend (VOTAR-492/498) pero aún no está modelada en ningún DER (deuda de documentación; feedback PR).
   4. Nueva secuencia `secuencia-cookies-sesion-votar-487.mmd`: emisión y limpieza de las tres cookies, y llamada server-side a Autogestión.
   5. `contexto-sistema.md`: nota de arquitectura y puntero de diagramas a `sprint-7/`.
 - **User Stories relacionadas**: VOTAR-487, US-312, US-313
