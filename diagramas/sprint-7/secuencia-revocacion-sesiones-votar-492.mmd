@@ -1,0 +1,60 @@
+%% VOTAR-492 §12.2 — Plan de respuesta a incidentes: revocación masiva de
+%% sesiones, bloqueo de flujos de autenticación y timeout por inactividad.
+%% AC-1: revocar corta el access token vigente de inmediato (claim sid).
+%% AC-2: la sesión inactiva caduca sin depender del cliente.
+%% AC-3: logout invalida cookies + sesión en DB de forma atómica (idempotente).
+
+sequenceDiagram
+  autonumber
+  actor Autoridad as Autoridad Electoral (PAUSER)
+  participant Panel as Panel /configuracion/seguridad
+  participant API as API Backend<br/>(SessionAdminController)
+  participant RTS as RefreshTokenService
+  participant DB as PostgreSQL<br/>(refresh_session)
+  participant Audit as AuditLoggerService
+  actor Victima as Sesión comprometida
+  participant Guard as JwtAuthGuard + JwtStrategy
+
+  rect rgb(245, 235, 235)
+  note over Autoridad,Audit: Contención — revocación global
+  Autoridad->>Panel: Revocar TODAS las sesiones (motivo + confirmacion tipeada)
+  Panel->>API: POST /auth/sessions/revocar-todas
+  API->>RTS: revokeAllSessions(REVOCACION_GLOBAL, exceptIdSession = sid del operador)
+  RTS->>DB: UPDATE refresh_session SET revoked_at, revoked_reason WHERE revoked_at IS NULL AND id_session != sid
+  DB-->>RTS: filas afectadas
+  RTS-->>API: sesionesRevocadas
+  API->>Audit: logSesionRevocada(alcance = GLOBAL, objetivo ofuscado)
+  API-->>Panel: 200 { sesionesRevocadas, alcance: GLOBAL }
+  end
+
+  rect rgb(235, 240, 245)
+  note over Victima,Guard: El access token robado (aún no expirado) deja de servir
+  Victima->>API: GET /elecciones (cookie votar_access_token vigente)
+  API->>Guard: canActivate → JwtStrategy.validate(payload)
+  Guard->>RTS: validateActiveSession(payload.sid)
+  RTS->>DB: SELECT * FROM refresh_session WHERE id_session = :sid
+  DB-->>RTS: revoked_at != null
+  RTS-->>Guard: UnauthorizedException('session_revoked')
+  Guard-->>API: 401 + ACCESO_DENEGADO (reason = session_revoked)
+  API-->>Victima: 401
+  end
+
+  rect rgb(238, 244, 238)
+  note over Victima,DB: Timeout por inactividad (rama alternativa, sin acción del operador)
+  Victima->>API: GET /auth/me tras superar SESSION_IDLE_TIMEOUT sin actividad
+  API->>Guard: JwtStrategy.validate → validateActiveSession(sid)
+  Guard->>RTS: validateActiveSession(sid)
+  RTS->>DB: diferencia now() vs last_activity_at supera idleTimeout
+  RTS->>DB: UPDATE refresh_session SET revoked_at, revoked_reason = INACTIVIDAD
+  RTS-->>Guard: UnauthorizedException('session_idle')
+  Guard-->>Victima: 401
+  end
+
+  rect rgb(245, 245, 238)
+  note over Autoridad,DB: Logout atómico (AC-3)
+  Autoridad->>API: POST /auth/logout (cookie de refresh)
+  API->>RTS: revokeSession(refreshToken, LOGOUT) — idempotente
+  RTS->>DB: UPDATE refresh_session SET revoked_at, revoked_reason (si estaba activa)
+  Note right of API: try/finally: las cookies se limpian aunque la sesión ya estuviera revocada
+  API-->>Autoridad: 204 + Set-Cookie limpiando votar_access_token y votar_refresh_token
+  end

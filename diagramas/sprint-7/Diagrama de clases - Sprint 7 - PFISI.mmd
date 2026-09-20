@@ -8,9 +8,25 @@
 %%   en producción + SameSite=Strict. Sin nuevas clases de dominio: el atributo
 %%   es de la emisión/limpieza HTTP, no de una entidad. SSO Autogestión sigue
 %%   siendo server-side (no hay redirect OAuth en el browser).
+%% - VOTAR-497: RelayerService paga el gas de castSignedVote. El cliente deja
+%%   de tener VITE_PRIVATE_KEY. RelayerCapacidad es un token opaco de un solo
+%%   uso (sin identidad ni selección). VaultService hidrata las claves
+%%   operativas desde archivo cifrado o KMS antes de NestFactory; en runtime
+%%   real se rechaza provider=env.
 %% - VOTAR-486: EleccionesService.eliminarEleccion pasa a softRemove (borrado
 %%   lógico); Eleccion suma fechaEliminacion (@DeleteDateColumn) — sin nuevas
 %%   clases de dominio
+%% - VOTAR-492 (§12.2 — Plan de respuesta a incidentes): RefreshTokenService suma
+%%   validateActiveSession / revokeSessionsByUser / revokeAllSessions /
+%%   listActiveSessions; RefreshSession suma lastActivityAt y revokedReason;
+%%   JwtStrategy.validate pasa a async y consulta refresh_session (claim `sid`);
+%%   nuevos SessionAdminController y AuthLockdownGuard; ConfiguracionSistema suma
+%%   authBloqueo*
+%% - VOTAR-498: hardening integral de PostgreSQL — resolveDatabaseSsl (TLS
+%%   estricto en TypeORM runtime, migraciones y pg_dump/pg_restore) +
+%%   encryptedColumn/field-encryption (AES-256-GCM en reposo sobre
+%%   AutoridadElectoral.totpSecret/nombre y RefreshSession.email/nombre) +
+%%   configuración de red versionada (pg_hba.conf, firewall)
 %% Hereda Sprint 6 (evolución respecto a Sprint 5):
 %% - VOTAR-474: escrutinio multi-categoría on-chain — castSignedVote/recordVote
 %%   aceptan candidatoIds[] (EIP-712 domain v2); VoteUpdated por cada id
@@ -186,6 +202,7 @@ classDiagram
         -String nombre
         -String email
         -String rol
+        -String totpSecret
         +crearComicio(eleccion Eleccion) Eleccion
         +configurarAccesoVotantes(config ConfiguracionComicio) void
         +definirRolesPostulacion(categorias Categoria[]) void
@@ -407,7 +424,57 @@ classDiagram
         +actaAperturaPlantilla JSON
         +actaCierrePlantilla JSON
         +actaAperturaModo String
+        +authBloqueoAlcance String
+        +authBloqueoMotivo String
+        +authBloqueoDesde Date
+        +authBloqueoPor String
     }
+
+    %% VOTAR-492 §12.2 — hardening de sesiones para respuesta a incidentes.
+    class RefreshSession {
+        <<entidad TypeORM>>
+        +idSession Number
+        +tokenHash String
+        +identificadorSso String
+        +sub String
+        +email String
+        +nombre String
+        +expiresAt Date
+        +lastActivityAt Date
+        +revokedAt Date
+        +revokedReason String
+    }
+
+    class RefreshTokenService {
+        <<servicio>>
+        +issueSession(identity) Promise
+        +rotateSession(refreshToken) Promise
+        +revokeSession(refreshToken, motivo) Promise~boolean~
+        +validateActiveSession(idSession) Promise~RefreshSession~
+        +listActiveSessions(filtro) Promise
+        +revokeSessionsByUser(input) Promise~number~
+        +revokeAllSessions(motivo, exceptIdSession) Promise~number~
+    }
+
+    class SessionAdminController {
+        <<controller — auth/sessions>>
+        +listar(req) Promise
+        +cerrarOtras(req) Promise
+        +revocarPorUsuario(dto, req) Promise
+        +revocarTodas(dto, req) Promise
+    }
+
+    class AuthLockdownGuard {
+        <<guard>>
+        +canActivate(context) Promise~boolean~
+        -getBloqueoState() Promise
+    }
+
+    RefreshTokenService --> RefreshSession : gestiona
+    SessionAdminController --> RefreshTokenService : usa
+    AuthLockdownGuard --> ConfiguracionSistema : consulta bloqueo
+
+    note for RefreshTokenService "VOTAR-492 §12.2 — rotateSession rota token_hash\nin-place (preserva id_session y expires_at). El access\ntoken JWT lleva el claim `sid`; JwtStrategy.validate\n(ahora async) llama validateActiveSession en cada\nrequest del panel → revocación instantánea y timeout\npor inactividad. logout es idempotente (cookies +\nDB de forma atómica)."
 
     %% VOTAR-466 — reemplaza el disco local (/uploads) como almacenamiento
     %% de imágenes electorales. Sin relación de composición formal con
@@ -491,6 +558,36 @@ classDiagram
     EntidadFirmasService ..> FirmaInstitucionalService : firma EIP-712 Validation
     FirmaInstitucionalService ..> ContratoBoleta : verifyingContract del dominio EIP-712
 
+    %% ═══ Relayer de gas y vault de secretos (VOTAR-497) ═══
+
+    class RelayerCapacidad {
+        <<entidad TypeORM — sin identidad ni voto>>
+        +idCapacidad String
+        +tokenHash Hash
+        +idEleccion int
+        +expiraEn DateTime
+        +consumidaEn DateTime
+        +emitidaEn DateTime
+    }
+
+    class RelayerService {
+        <<servicio NestJS — RELAYER_PRIVATE_KEY>>
+        +autorizar(idEleccion int) RelayToken
+        +emitirCast(idEleccion int, relayToken String, votoFirmado SignedVote) TxHash
+    }
+
+    class VaultService {
+        <<servicio NestJS — hidrata antes de NestFactory>>
+        +getSecret(name ClassifiedSecretName) String
+        +listClassifiedNames() ClassifiedSecretName[]
+    }
+
+    RelayerService "1" --o "0..*" RelayerCapacidad : emite y consume (uso único)
+    RelayerService ..> VaultService : lee RELAYER_PRIVATE_KEY
+    RelayerService ..> ContratoBoleta : broadcast castSignedVote (paga gas)
+    RelayerService ..> MerkleTree : proof de servidor, no la del cliente
+    FirmaInstitucionalService ..> VaultService : lee VALIDATOR_PRIVATE_KEY
+
     class ArchivarComicioService {
         <<servicio NestJS>>
         +archivarManual(idEleccion int, actorId String) void
@@ -537,6 +634,26 @@ classDiagram
         <<scheduler NestJS — gated BACKUP_ENABLED>>
         +onModuleInit() void
         +onModuleDestroy() void
+    }
+
+    class DatabaseSslConfig {
+        <<config — VOTAR-498>>
+        +resolveDatabaseSsl(get EnvGetter, isProduction boolean) TlsOptions
+        +buildLibpqSslEnv(get EnvGetter) ProcessEnv
+        +isDatabaseProductionEnv(get EnvGetter) boolean
+    }
+
+    class FieldEncryption {
+        <<crypto util — VOTAR-498>>
+        +encryptField(plaintext String, key Buffer) String
+        +decryptField(value String, key Buffer) String
+        +resolveFieldKey() Buffer
+    }
+
+    class EncryptedColumnTransformer {
+        <<TypeORM ValueTransformer — VOTAR-498>>
+        +to(value String) String
+        +from(value String) String
     }
 
     class TransaccionBlockchain {
@@ -591,6 +708,15 @@ classDiagram
     BackupScheduler ..> BackupService : tick diario (BACKUP_HOUR)
 
     note for BackupService "VOTAR-388: pg_dump → AES-256-GCM → src/backups/*.dump.enc\n+ sidecar .sha256. Plain dump se elimina al terminar.\nBACKUP_REMOTE_DIR opcional (offsite); retención ≥30d.\nFallo (ENOSPC, integridad) → mail crítico a ALERT_EMAIL_TO.\nCLI: npm run db:backup / db:restore."
+
+    %% VOTAR-498 — hardening de PostgreSQL
+    DatabaseSslConfig ..> BackupService : buildLibpqSslEnv() inyecta PGSSLMODE/PGSSLROOTCERT
+    AutoridadElectoral ..> EncryptedColumnTransformer : totpSecret / nombre (columna text)
+    RefreshSession ..> EncryptedColumnTransformer : email / nombre (columna text)
+    EncryptedColumnTransformer ..> FieldEncryption : encryptField() / decryptField()
+
+    note for DatabaseSslConfig "VOTAR-498: TLS obligatorio hacia PostgreSQL — DB_SSL_MODE\n(disable|require|verify-ca|verify-full). Fail-closed: producción\n(DEVELOPMENT=false) rechaza 'disable' y exige DB_SSL_CA para\nverify-ca/verify-full. Única fuente de verdad reusada por TypeORM\nruntime, DataSource de migraciones y pg_dump/pg_restore."
+    note for FieldEncryption "VOTAR-498: AES-256-GCM en reposo (node:crypto), sal de derivación\npropia (votar-field-v1) distinta de BACKUP_ENCRYPTION_KEY. Formato\nenc:v1:<base64(iv|authTag|ciphertext)>. DB_ENCRYPTION_KEY requerida\nen producción; passthrough en claro en desarrollo sin clave.\nTambién cifra RefreshSession.email/nombre (VOTAR-492, mergeado en\nSprint 7)."
 
     TransaccionesPublicService --> TransaccionBlockchainService : listar
     TransaccionBlockchainService ..> ContratoBoleta : getTransactionReceipt / parse
@@ -647,7 +773,7 @@ classDiagram
     note for MerkleTree "VOTAR-334: raíz determinística Keccak-256.\nProofs calculadas on-demand; NO persistidas por votante."
     note for MerkleProof "Calculada on-demand; NO persistida (Ley 25.326).\nVOTAR-354: el votante autenticado solicita la proof para\nacreditar pertenencia al padrón antes de sufragar."
     note for AlmacenRaizMerkle "US-335: contrato MerkleRootStore en Sepolia.\nEvento RootPublished; raíz consultable on-chain.\nVOTAR-350: getElectionState expuesto vía AuditView."
-    note for ContratoBoleta "VOTAR-339/357/377: Merkle + EIP-712 + validatorSignature.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ndigest EIP-712 domain v2 firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain."
+    note for ContratoBoleta "VOTAR-339/357/377: Merkle + EIP-712 + validatorSignature.\nVOTAR-346/474: delega VoteCast a VoteRegistry;\ndigest EIP-712 domain v2 firma candidatoIds[] (multi-categoría).\nVOTAR-347: whenNotPaused + pause(reason).\nVOTAR-452: enforceRevotePolicy respeta minIntervalSeconds\npor nullifier on-chain.\nVOTAR-497: msg.sender solo paga gas; no hay rol de relayer.\nEl cliente ya no firma la tx: la paga RelayerService."
     note for RegistroIntentoSufragio "VOTAR-328/451/452: claveIntento opaca\n(JWT sub hash). votosObjetivo sync idempotente\ntras cast on-chain; lock pessimista evita doble consumo."
     note for CooldownAnchor "VOTAR-449/452: ancla unlockAt en reloj del nodo;\npersiste en localStorage por (idEleccion, votanteScope).\nSobrevive cierre de pestaña; no reinicia countdown espurio."
     note for VistaAuditoria "VOTAR-453: merkleRootConsistente compara\nraíz on-chain vs PADRON_ELECTORAL.hash_padron.\npoliticaRevoto=DISABLED si !revoteEnabled."
@@ -655,4 +781,6 @@ classDiagram
     note for VistaAuditoria "VOTAR-350: fachada view sin gas vía RPC público.\nVOTAR-329: getRevoteStats expone métricas\nde sobreescritura (totalRevotes, uniqueVoters,\noverwriteRatio). VOTAR-367: getElectionState +\nmerkleRootStore para ficha técnica pública.\nverifyReceipt usa ancla anónima (nullifier)."
     note for PadronElectoral "US-331: importación tolerante con novedades.\nUS-335: publicarSelloOnChain() ancla la raíz en blockchain."
     note for AutoridadElectoral "VOTAR-487: sesión en cookies HttpOnly\n(votar_access_token + votar_refresh_token),\nSecure en producción y SameSite=Strict.\nEl logout limpia con los mismos atributos."
-    note for Votante "US-312: autenticación institucional.\nVOTAR-487: votar_voter_access_token HttpOnly,\nSecure en producción, SameSite=Strict, sin refresh.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto."
+    note for Votante "US-312: autenticación institucional.\nVOTAR-487: votar_voter_access_token HttpOnly,\nSecure en producción, SameSite=Strict, sin refresh.\nVOTAR-354: solicitarProofPadron() sin vincular identidad al voto.\nVOTAR-379: sin tabla off-chain votante↔contenido de voto.\nVOTAR-497: firma el sufragio con la billetera efímera;\nno posee la clave que paga el gas."
+    note for RelayerCapacidad "VOTAR-497: una fila keyed por token_hash (INSERT en autorización, UPDATE en cast).\nAislamiento = contenido del voto: sin nullifier, selección, txHash ni hoja.\nNo implica tablas distintas para emisión y cast.\nclave_intento (si se agrega) es solo cooldown; nunca payload de voto."
+    note for VaultService "VOTAR-497: PRIVATE_KEY, RELAYER_PRIVATE_KEY,\nVALIDATOR_PRIVATE_KEY, FAUCET_MASTER_PRIVATE_KEY,\nJWT_PRIVATE_KEY, BACKUP_ENCRYPTION_KEY.\nProducción rechaza SECRETS_VAULT_PROVIDER=env."

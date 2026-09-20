@@ -96,7 +96,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | **Panel de Administración** | React 19 / TanStack Router | Gestión institucional del padrón y comicios |
 | **Dashboard Público** | React 19 / TanStack Query / Recharts | Auditoría ciudadana: resumen, resultados, participación, re-voto, padrón, estado |
 | **API Backend** | NestJS 11 / TypeORM / PostgreSQL 16 | Motor off-chain: Merkle, reglas electorales, desvinculación de identidad, orquestación Sepolia |
-| **Base de Datos** | PostgreSQL 16 | Persistencia off-chain (configuración, padrón hasheado, audit log). **NO almacena votos ni PII** |
+| **Base de Datos** | PostgreSQL 16 | Persistencia off-chain (configuración, padrón hasheado, audit log). **NO almacena votos ni PII**. TLS obligatorio + cifrado AES-256-GCM en reposo de secretos (VOTAR-498) |
 | **Ecosistema On-Chain** | Solidity ^0.8.24 / OpenZeppelin v5 / Hardhat | Smart contracts de lógica electoral inmutable (Sepolia testnet) |
 
 ### 4.3 Componentes clave del API Backend
@@ -111,6 +111,8 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `revotePolicyService` | Gestiona política de voto múltiple |
 | `lifecycleManager` | Ciclo de vida del comicio (apertura/cierre/archivado) |
 | `auditLogger` | Registro append-only de acciones críticas |
+| `relayerService` | Paga el gas de `castSignedVote` (VOTAR-497). Token opaco de un solo uso; el cast es anónimo |
+| `vaultService` | Hidrata claves operativas desde archivo cifrado o KMS antes de arrancar. Producción rechaza `env` |
 
 ### 4.4 Smart Contracts (On-Chain)
 
@@ -152,8 +154,11 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
       payload completo → EntidadFirmasPublicController canjea la credencial (uso
       único) y devuelve validatorSignature (EIP-712 `Validation`, VALIDATOR_ROLE).
       El backend nunca ve identidad y selección en la misma request (Blind Signing).
-  6. blockchainClient envía castSignedVote(vote, proof, firmaVotante,
-     validatorSignature) → RPC → BallotContract
+  6. VOTAR-497: blockchainClient pide un token opaco con la sesión
+     (POST /relayer/autorizacion, sin cuerpo de voto) y envía el sufragio
+     firmado en un POST anónimo (credentials omit). El relayer consume el
+     token, arma la Merkle proof en el servidor y paga el gas con
+     RELAYER_PRIVATE_KEY. El cliente ya no tiene VITE_PRIVATE_KEY.
   7. BallotContract:
      a. Consulta MerkleRoot activa
      a2. validatorSignature ausente → revierte `MissingValidatorSignature` (VOTAR-377, UAT-01)
@@ -168,7 +173,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
   8. Votante recibe recibo criptográfico (hash tx + código verificación)
 ```
 
-**Invariante clave:** En ningún momento existe una FK persistente entre la identidad del votante y su voto. La clave privada de la billetera efímera **nunca se persiste** (se genera en el navegador y se destruye post-firma). El secreto de la credencial de validación (VOTAR-377) vive sólo en RAM y se destruye tras canjearlo; `credencial_validacion` y `emision_credencial` no comparten columna ni FK, y la `validatorSignature` on-chain no contiene `voterLeaf` — sólo prueba "un integrante del padrón votó".
+**Invariante clave:** En ningún momento existe una FK persistente entre la identidad del votante y su voto. La clave privada de la billetera efímera **nunca se persiste** (se genera en el navegador y se destruye post-firma). El secreto de la credencial de validación (VOTAR-377) vive sólo en RAM y se destruye tras canjearlo; `credencial_validacion` y `emision_credencial` no comparten columna ni FK, y la `validatorSignature` on-chain no contiene `voterLeaf` — sólo prueba "un integrante del padrón votó". **VOTAR-497:** `relayer_capacidad` tampoco guarda votante ni contenido de voto (solo `sha256` del token). La clave que paga el gas no está en el cliente; en runtime real las claves operativas se hidratan desde un vault y se rechaza `SECRETS_VAULT_PROVIDER=env`.
 
 ---
 
@@ -198,6 +203,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `RECIBO_VOTACION` | Código de verificación E2E para el votante |
 | `REGISTRO_NULLIFIER` | Motor off-chain anti-doble voto. Rastreo por nullifier (no por identidad) |
 | `AUDIT_LOG` | Bitácora append-only de eventos críticos |
+| `RELAYER_CAPACIDAD` | Token de un solo uso del relayer (VOTAR-497): solo `token_hash` + comicio. Sin votante ni contenido de voto |
 | `RESULTADO_ELECCION` | Agregado del escrutinio (off-chain): votos por candidato/lista/categoría |
 
 > **Nota Sprint 1:** `PADRON_VOTANTE` ya no referencia `VOTANTE`. Solo persiste `hash_hoja` (keccak-256). Cambio aplicado en US-330.
@@ -334,6 +340,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 ## 17. Notas de Arquitectura Críticas
 
 - **La clave privada de la billetera efímera NUNCA se persiste** en ningún storage (ni BD ni blockchain). Se genera en Web Crypto API del navegador, firma el voto y se destruye.
+- **Clave de gas (VOTAR-497)**: el cliente no transmite `castSignedVote` ni tiene `VITE_PRIVATE_KEY`. Un relayer del backend paga el gas con un token opaco de un solo uso. El POST del cast no lleva cookie de sesión. En runtime real las claves operativas salen de un vault (archivo cifrado o KMS); se rechaza `SECRETS_VAULT_PROVIDER=env`.
 - **Merkle Proofs NO se almacenan en BD**. Son calculados en tiempo de ejecución por el backend bajo demanda autenticada.
 - **VOTO no tiene FK a VOTANTE**. El voto "nace huérfano de identidad" (diseño intencional Ley 25.326).
 - **Política LAST_VOTE_WINS**: el VoteRegistry sobrescribe los `candidateIds[]` del nullifier en cada re-voto mientras el comicio esté abierto (VOTAR-474). Post-cierre, inmutable.
@@ -356,7 +363,7 @@ VOTAR es una plataforma **open source** para digitalizar procesos electorales de
 | `PFISI-Votar/blockchain` | Hardhat / Solidity | `dev` | test + Slither |
 | `PFISI-Votar/back` | NestJS / TypeORM | `dev` | lint + test + e2e |
 | `PFISI-Votar/front` | React / Vite | `dev` | Prettier + ESLint + Vitest |
-| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → `sprint-7/votar.c4`) |
+| `PFISI-Votar/Contexto` | Diagramas C4 / Mermaid / docs | `dev` | sync C4 (workflow → sprint más alto, hoy `sprint-7/votar.c4`) |
 
 ### Dashboard Público — secciones implementadas
 
@@ -390,16 +397,19 @@ Los 4 endpoints de Resultados/Participación/Re-voto/Transacciones responden **4
 
 | Ticket | Estado | Descripción |
 |---|---|---|
-| VOTAR-486 | Documentado | Borrado lógico de `eleccion` (`fecha_eliminacion`) para no chocar con el trigger de `audit_log` |
+| VOTAR-486 | Mergeado | Soft delete de comicio (`fecha_eliminacion`) — evita que el trigger de inmutabilidad de `audit_log` bloquee el `DELETE` físico de un comicio con bitácora asociada |
 | VOTAR-487 | En revisión | Cookies de sesión con `SameSite=Strict` (además de `HttpOnly` y `Secure` en producción). SSO Autogestión server-side |
+| VOTAR-497 | En revisión | Relayer de gas (`relayer_capacidad`) y vault de claves operativas. El cliente deja de tener `VITE_PRIVATE_KEY` |
+| VOTAR-492 | En revisión | Hardening de sesiones: revocación masiva y timeout por inactividad — claim `sid`, rotación in-place de `refresh_session`, `AuthLockdownGuard` |
+| VOTAR-498 | En revisión | Hardening integral de PostgreSQL — TLS obligatorio (fail-closed en producción) en TypeORM/migraciones/`pg_dump`, cifrado AES-256-GCM en reposo de `autoridad_electoral.totp_secret/nombre` y `refresh_session.email/nombre`, `pg_hba.conf` + firewall restringidos al backend |
 
-### Sprint 6 — en curso
+### Sprint 6 — entregado
 
 | Ticket | Estado | Descripción |
 |---|---|---|
 | VOTAR-459 | Implementado | Visibilidad configurable de solapas del Dashboard Público (Resultados/Participación/Re-voto/Transacciones), enforcement 403 en backend |
 | VOTAR-466 | Implementado | Persistencia de imágenes electorales en PostgreSQL (`imagen_electoral` bytea; `GET /imagenes/:id`) |
-| VOTAR-388 | En revisión | Respaldos diarios cifrados AES-256-GCM de PostgreSQL (`src/backups/`, retención 30d, offsite opcional, alertas mail) |
+| VOTAR-388 | Mergeado | Respaldos diarios cifrados AES-256-GCM de PostgreSQL (`src/backups/`, retención 30d, offsite opcional, alertas mail) |
 
 ### Sprint 5 — entregas principales
 
