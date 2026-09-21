@@ -1,0 +1,36 @@
+%% VOTAR-487 — Cookies de sesión SameSite=Strict
+%% Emisión y limpieza de autoridad (access+refresh) y votante (access, sin refresh).
+%% Autogestión es server-side: no hay redirect OAuth que dependa de una cookie de estado.
+
+sequenceDiagram
+  autonumber
+  actor Votante
+  actor Autoridad as Autoridad electoral
+  participant API as API Backend
+  participant SSO as Autogestión UTN
+
+  Note over Votante,SSO: Login votante — POST same-site, sin navegación al IdP
+
+  Votante->>API: POST /auth/votante/login { nick, password }
+  API->>SSO: POST /login + fetch Basic (server-side)
+  SSO-->>API: identidad institucional
+  API-->>Votante: Set-Cookie votar_voter_access_token<br/>HttpOnly; Secure (producción); SameSite=Strict; Path=/
+
+  Note over Votante,API: Requests same-site posteriores envían la cookie.<br/>Un GET top-level desde otro sitio no (Strict).
+
+  Votante->>API: POST /auth/votante/logout
+  API-->>Votante: Set-Cookie de limpieza<br/>mismos atributos (Path=/, SameSite=Strict)
+
+  Note over Autoridad,SSO: Login autoridad — cookies solo tras 2FA
+
+  Autoridad->>API: POST /auth/login
+  API->>SSO: POST /login (server-side)
+  SSO-->>API: identidad institucional
+  API-->>Autoridad: desafío 2FA, sin Set-Cookie
+  Autoridad->>API: POST /auth/2fa/verify
+  API-->>Autoridad: Set-Cookie votar_access_token + votar_refresh_token<br/>HttpOnly; Secure (producción); SameSite=Strict; Path=/
+
+  Autoridad->>API: POST /auth/logout
+  API-->>Autoridad: limpia access y refresh con los mismos atributos
+
+  Note over Votante,API: FASE 2 de firma (VOTAR-377) y indexación anónima (VOTAR-373)<br/>siguen con credentials:omit — no dependen de estas cookies.
