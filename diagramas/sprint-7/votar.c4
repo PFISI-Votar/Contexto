@@ -81,6 +81,23 @@ model {
     technology "OAuth 2.0 / OpenID Connect"
     description "Proveedor de identidad de la institución (Ej. CEUTI / UTN FRVM)"
   }
+
+  googleIdentity = externalSystem "Google Identity Platform" {
+    technology "OAuth 2.0 Authorization Code / OpenID Connect"
+    description "VOTAR-523: identidad alternativa para votantes. Expone authorization, token y JWKS; el backend valida issuer, audience, nonce, firma y email_verified"
+  }
+
+  vercelEdge = externalSystem "Vercel Edge" {
+    #offchain
+    technology "CDN / SPA rewrites / API proxy"
+    description "VOTAR-521/523: sirve la SPA y reescribe /api/* y /auth/votante/google/callback hacia el backend para conservar cookies same-site"
+  }
+
+  backendVps = externalSystem "VPS Backend" {
+    #offchain
+    technology "Ubuntu / nginx / systemd"
+    description "VOTAR-516: ejecución alternativa on-demand del backend con proxy TLS y apagado automático post-comicio por timer"
+  }
   
   rpc = externalSystem "Proveedor de Nodos RPC" {
     #web3
@@ -126,7 +143,7 @@ model {
 
       auth = component "Módulo de Autenticación BUD" {
         technology "React Context / cookies HttpOnly"
-        description "Login de votante vía Autogestión UTN delegada al backend (US-312). La sesión queda en votar_voter_access_token (HttpOnly, Secure en producción, SameSite=Strict, TTL 30m, sin refresh — VOTAR-487). No hay redirect OAuth en el browser: el POST /auth/votante/login es same-site y la API llama a Autogestión server-side"
+        description "Login de votante por Autogestión UTN server-side o Google OAuth/OIDC (VOTAR-523), según metodos_autenticacion. La sesión queda en votar_voter_access_token (HttpOnly, Secure, SameSite=Strict, TTL 30m, sin refresh). Google usa redirect y una cookie state cifrada AES-256-GCM de 5 min; el callback vuelve al origen frontend mediante rewrite"
       }
       ballot = component "Selector de Candidatos" {
         technology "React Component"
@@ -173,6 +190,10 @@ model {
       electionConfig = component "Configurador de Comicios" {
         technology "React / react-hook-form / Zod"
         description "Formulario /comicios/nuevo: alta en BORRADOR con nombre, fechas UTC ISO8601, tipo de votación (POR_CANDIDATO | POR_LISTA), roles dinámicos con límite de postulantes, métodos de autenticación (Google, SSO Institucional — mín. 1) y validación client-side antes de POST /elecciones (US-316)"
+      }
+      popupAlertaConfig = component "Configurador de Advertencia BUD" {
+        technology "React / TanStack Query / Zod"
+        description "VOTAR-524: habilita y edita título/descripción del diálogo obligatorio mostrado antes de iniciar el wizard de voto"
       }
       ofertaElectoralPanel = component "Gestor de Oferta Electoral" {
         technology "React / TanStack Query / Zod"
@@ -236,6 +257,10 @@ model {
         technology "NestJS Passport JWT + Autogestión UTN (US-313)"
         description "US-313 (interino): valida credenciales contra API Autogestión UTN server-side (POST /login + fetch Basic; no hay callback OAuth en el browser) y emite JWT propio (HS256) con claim role (election_admin | voter) en cookies HttpOnly, Secure en producción y SameSite=Strict (VOTAR-487). RolesGuard devuelve 403 y dispara auditLogger. Objetivo futuro: validar tokens OIDC vía JWKS del SSO institucional"
       }
+      googleOidcService = component "Google OIDC Service (VOTAR-523)" {
+        technology "NestJS / OAuth 2.0 / JWT / JWKS / AES-256-GCM"
+        description "Genera state+nonce, sella la cookie state, intercambia code por id_token, valida la firma con JWKS cacheado y crea la sesión sólo si el email verificado pertenece al padrón del comicio"
+      }
       rulesEngine = component "Motor de Reglas Electorales" {
         technology "TypeScript / Pydantic"
         description "Valida reglas de negocio antes de oficializar: mínimo de candidatos, voto en blanco habilitado, ventanas temporales, bajas/sucesiones bloqueadas tras inicio, y política de voto múltiple (revoteEnabled, maxVotesPerVoter ≥1, minIntervalSeconds ≥0, coherencia con ventana del comicio)"
@@ -278,7 +303,19 @@ model {
       }
       rpcFailover = component "Cliente RPC con Failover (VOTAR-386)" {
         technology "ethers v6 / viem FallbackProvider"
-        description "Rotación Infura→Alchemy→QuickNode ante 429, timeout >15s o error de red. Log de failover + verificación skew de bloque"
+        description "Rotación Infura→Alchemy→QuickNode ante 429, timeout >15s o error de red. VOTAR-515 agrega reintentos tras una rotación completa con backoff exponencial+jitter y verificación de skew de bloque"
+      }
+      rpcResponseCache = component "Caché de Respuestas RPC (VOTAR-515)" {
+        technology "Map en memoria / JSON-RPC"
+        description "Cachea chainId, blockNumber y lecturas fijadas a bloque; coalesce requests idénticos en vuelo. Las respuestas próximas al head usan TTL corto y sólo pasan a inmutables tras la profundidad de finalidad; nunca cachea escrituras ni eth_call latest"
+      }
+      dashboardGateway = component "Gateway Dashboard en Tiempo Real (VOTAR-518)" {
+        technology "NestJS WebSocket / Socket.IO"
+        description "Mantiene una sala de aviso por comicio siempre disponible y otra sala de resultados sujeta a visibilidad. Emite dashboard:actualizado sin conteos para refrescar participación, re-voto, transacciones y estado aun con Resultados ocultos"
+      }
+      serverMetrics = component "Métricas del Servidor (VOTAR-512)" {
+        technology "NestJS middleware / logs agregados"
+        description "Mide latencia, códigos HTTP y requests abortados en ventanas; expone telemetría operativa sin incorporar datos de dominio"
       }
       faucetService = component "Faucet Sepolia (VOTAR-387)" {
         technology "NestJS cron / ethers Wallet"
@@ -286,7 +323,7 @@ model {
       }
       backupService = component "Respaldos PostgreSQL cifrados (VOTAR-388)" {
         technology "NestJS scheduler / pg_dump / AES-256-GCM"
-        description "Volcado diario en hora de baja carga (BACKUP_HOUR) → cifrado → src/backups/*.dump.enc + .sha256. Copia opcional a BACKUP_REMOTE_DIR, retención ≥30d, alerta mail a ALERT_EMAIL_TO ante fallo/integridad. CLI: npm run db:backup | db:restore"
+        description "Volcado diario comprimido (gzip configurable) en hora de baja carga → AES-256-GCM + .sha256. Copia opcional a BACKUP_REMOTE_DIR y poda local/remota aislada por prefijo con retención ≥30d; una falla de retención remota no invalida el backup local"
       }
       lifecycleManager = component "Gestor de Ciclo de Vida Electoral" {
         technology "Node.js Service"
@@ -345,7 +382,7 @@ model {
 
       electionSchema = component "Esquema de Comicios" {
         technology "PostgreSQL Schema"
-        description "Tablas eleccion (tipo_votacion, estado BORRADOR), configuracion_comicio (metodos_autenticacion[], politica_revoto), ventanas temporales, parámetros de re-voto y direcciones de contratos/Merkle Roots (solo post-borrador). Política US-316: sin txs Sepolia en alta BORRADOR"
+        description "Tablas eleccion y configuracion_comicio: métodos de autenticación, política de re-voto, visibilidad del dashboard y popup_alerta_{habilitado,titulo,descripcion}. Ventanas y direcciones on-chain se asignan sólo post-borrador"
       }
       candidateSchema = component "Esquema de Categorías y Listas" {
         technology "PostgreSQL Schema (candidateSchema)"
@@ -353,7 +390,7 @@ model {
       }
       voterSchema = component "Esquema de Padrón" {
         technology "PostgreSQL Schema"
-        description "PADRON_ELECTORAL (hash_padron = raíz Merkle compacta), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb, tx_hash_publicacion — VOTAR-334 + US-335)"
+        description "PADRON_ELECTORAL (hash_padron, criterio_hash DNI|EMAIL), PADRON_VOTANTE (hash_hoja, indice_hoja), MERKLE_TREE (merkle_root, tree_dump jsonb, tx_hash_publicacion)"
       }
       auditLogSchema = component "Esquema de Audit Log" {
         technology "PostgreSQL Schema (append-only)"
@@ -501,6 +538,7 @@ model {
   votar.bud.proofRequester -> votar.api.apiRouter "Solicita Merkle Proof autenticado" { technology "JSON/HTTPS" }
   votar.panel.voterManager -> votar.api.apiRouter "Envía CSV de padrón para procesamiento" { technology "multipart/HTTPS" }
   votar.panel.electionConfig -> votar.api.apiRouter "Crea comicio en BORRADOR (POST /elecciones)" { technology "JSON/HTTPS" }
+  votar.panel.popupAlertaConfig -> votar.api.apiRouter "Guarda popup previo a la BUD" { technology "JSON/HTTPS" }
   votar.panel.ofertaElectoralPanel -> votar.api.apiRouter "CRUD listas/candidatos y oficialización" { technology "JSON/HTTPS" }
   votar.panel.configDatosCandidatoPanel -> votar.api.apiRouter "Guarda definición de campos dinámicos" { technology "JSON/HTTPS" }
   votar.panel.revoteConfigurator -> votar.api.apiRouter "Envía RevoteConfig para validación y persistencia" { technology "JSON/HTTPS" }
@@ -511,6 +549,9 @@ model {
   // Flujo interno API Backend
   votar.api.apiRouter -> votar.api.jwtValidator "Valida JWT en cada request"
   votar.api.jwtValidator -> sso "US-313: valida credenciales vía API Autogestión UTN; emite JWT de sesión con rol" { technology "HTTPS" }
+  votar.bud.auth -> votar.api.googleOidcService "GET /auth/votante/google y callback" { technology "HTTPS + redirects" }
+  votar.api.googleOidcService -> googleIdentity "Authorization, token exchange y JWKS" { technology "OAuth 2.0 / OIDC / HTTPS" }
+  votar.api.googleOidcService -> votar.api.dataAccess "Valida email Google contra el padrón y emite sesión" { technology "TypeORM" }
   votar.api.apiRouter -> votar.api.eleccionModule "Enruta creación de comicio y oferta electoral (US-316 / US-318)"
   votar.api.eleccionModule -> votar.api.dataAccess "Transacción crearCompleta: elección, boleta, roles, config"
   votar.api.eleccionModule -> votar.api.rulesEngine "Valida reglas antes de oficializar"
@@ -521,6 +562,7 @@ model {
   votar.api.revotePolicyService -> votar.api.dataAccess "Persiste config en electionSchema"
   votar.api.revotePolicyService -> votar.api.lifecycleManager "Inyecta RevoteConfig en createElection() de la factory"
   votar.api.revotePolicyService -> rpc "Consulta getVoterState(nullifier) para feedback al BUD" { technology "JSON-RPC/HTTPS" }
+  votar.api.rpcFailover -> votar.api.rpcResponseCache "Resuelve lecturas cacheables y coalesce inflight"
   votar.api.apiRouter -> votar.api.lifecycleManager "Solicita apertura/cierre del comicio"
   votar.api.apiRouter -> votar.api.voterCsvProcessor "Procesa padrón cargado por la autoridad"
   votar.api.apiRouter -> votar.api.identityDecoupler "Solicita credencial anónima desvinculada"
@@ -534,9 +576,11 @@ model {
   votar.api.rulesEngine -> votar.api.dataAccess "Consulta configuración y candidatos"
   votar.api.lifecycleManager -> votar.api.dataAccess "Actualiza estado del comicio (ABIERTA/CERRADA) y congela snapshot del dashboard"
   votar.api.lifecycleManager -> votar.api.auditLogger "Registra apertura/cierre (COMICIO_ABIERTO / COMICIO_CERRADO)"
+  votar.api.lifecycleManager -> votar.api.dashboardGateway "Emite cambios de ciclo de vida por Socket.IO"
   votar.api.lifecycleManager -> rpc "setElectionWindow + setElectionState(OPEN|CLOSED) en MerkleRootStore" { technology "JSON-RPC/HTTPS" }
   votar.api.reportGenerator -> votar.api.dataAccess "Lee datos relacionales"
   votar.api.reportGenerator -> rpc "Consulta resultados/eventos on-chain" { technology "JSON-RPC/HTTPS" }
+  votar.api.dashboardGateway -> votar.dashboard.statsViewer "dashboard:actualizado y resultados:actualizados" { technology "WebSocket / Socket.IO" }
   votar.api.apiRouter -> votar.api.auditLogger "Registra acciones críticas"
 
   // API Backend -> Base de Datos
@@ -575,6 +619,10 @@ model {
   votar.dashboard.participacionExporter -> votar.dashboard.statsViewer "Captura canvas Recharts → PNG local (VOTAR-376)"
   votar.api.rpcFailover -> rpc "Proveedor RPC primario" { technology "JSON-RPC/HTTPS" }
   votar.api.rpcFailover -> rpcBackup "Failover automático (VOTAR-386)" { technology "JSON-RPC/HTTPS" }
+  votar.bud -> vercelEdge "SPA y assets estáticos" { technology "HTTPS" }
+  vercelEdge -> votar.api "Proxy /api y callback Google" { technology "HTTPS" }
+  backendVps -> votar.api "Hospeda proceso NestJS administrado por systemd"
+  backendVps -> votar.db "Conexión PostgreSQL restringida" { technology "TCP/TLS" }
   votar.api.merklePublisherService -> votar.api.rpcFailover "publishRoot y ops admin Sepolia"
   votar.api.archivarComicioService -> votar.api.dataAccess "UPDATE estado=ARCHIVADA (sin RPC)"
   votar.api.pausaComicioService -> votar.api.rpcFailover "pause()/unpause() Ballot + Registry"
@@ -643,7 +691,7 @@ views {
     
     include votante, autoridad, auditor
     include votar
-    include sso, rpc, ethereum, backupOffsite
+    include sso, googleIdentity, rpc, ethereum, backupOffsite, vercelEdge, backendVps
 
     autoLayout TopBottom
   }
@@ -682,6 +730,7 @@ views {
     
     include *
     include sso
+    include googleIdentity
     include votar.bud
     include votar.panel
     include votar.db
@@ -870,7 +919,8 @@ views {
     votar.api.relayerService -> rpc "8. castSignedVote(candidateIds[]) → VoteCast + VoteUpdated×N (VOTAR-474/497)"
     rpc -> votar.contracts.ballotContract "9. castSignedVote"
     votar.contracts.ballotContract -> votar.contracts.voteRegistry "10. recordVote(candidateIds[]) — tallies multi-categoría"
-    votar.api.apiRouter -> votar.dashboard.statsViewer "11. poller detecta delta → resultados:actualizados (≤5s UAT-01)"
+    votar.api.apiRouter -> votar.api.dashboardGateway "11. poller detecta delta cada 4s"
+    votar.api.dashboardGateway -> votar.dashboard.statsViewer "12. dashboard:actualizado siempre; resultados:actualizados sólo si la solapa es visible (VOTAR-518)"
   }
 
   dynamic view archivar_comicio_flow {
@@ -929,14 +979,16 @@ views {
 
   dynamic view rpc_failover_flow {
     title "Failover RPC multi-proveedor (VOTAR-386)"
-    description "Rotación transparente ante 429, timeout o caída del nodo principal."
+    description "Backend: caché selectiva, rotación transparente y reintentos con backoff exponencial+jitter (VOTAR-515)."
 
-    votante -> votar.bud.blockchainClient "1. castSignedVote"
-    votar.bud.blockchainClient -> rpc "2. eth_sendRawTransaction (proveedor A)"
-    rpc -> votar.bud.blockchainClient "3. HTTP 429 Too Many Requests"
-    votar.bud.blockchainClient -> rpcBackup "4. reintento automático proveedor B (<1s)"
-    rpcBackup -> votar.contracts.ballotContract "5. tx confirmada"
-    votar.api.rpcFailover -> votar.api.auditLogger "6. log failover event (UAT-04)"
+    votar.api.apiRouter -> votar.api.rpcFailover "1. lectura JSON-RPC"
+    votar.api.rpcFailover -> votar.api.rpcResponseCache "2. busca caché/coalescencia por method+params"
+    votar.api.rpcFailover -> rpc "3. cache miss: proveedor A"
+    rpc -> votar.api.rpcFailover "4. HTTP 429 / timeout"
+    votar.api.rpcFailover -> rpcBackup "5. rota y valida skew de bloque"
+    rpcBackup -> votar.api.rpcFailover "6. si se agotan endpoints, backoff+jitter y nueva ronda"
+    votar.api.rpcFailover -> votar.api.rpcResponseCache "7. guarda sólo lectura segura; near-head usa TTL corto"
+    votar.api.rpcFailover -> votar.api.auditLogger "8. log de failover sin credenciales de URL"
   }
 
   dynamic view backup_postgresql_flow {
@@ -944,9 +996,10 @@ views {
     description "pg_dump → AES-256-GCM → src/backups + offsite opcional; alerta mail ante fallo de integridad o disco."
 
     votar.api.backupService -> votar.db "1. pg_dump formato custom (hora BACKUP_HOUR)"
-    votar.db -> votar.api.backupService "2. volcado temporal"
-    votar.api.backupService -> backupOffsite "3. *.dump.enc cifrado AES-256-GCM + .sha256"
-    backupOffsite -> autoridad "4. (si falla ENOSPC/integridad) mail crítico ALERT_EMAIL_TO"
+    votar.db -> votar.api.backupService "2. volcado temporal comprimido (gzip configurable)"
+    votar.api.backupService -> backupOffsite "3. *.dump.enc AES-256-GCM + .sha256"
+    votar.api.backupService -> backupOffsite "4. poda remota ≥30d aislada por prefijo; no invalida copia local si falla"
+    backupOffsite -> autoridad "5. (si falla ENOSPC/integridad) mail crítico ALERT_EMAIL_TO"
   }
 
   dynamic view sesion_cookies_samesite_strict {
@@ -958,5 +1011,64 @@ views {
     votar.api.jwtValidator -> sso "3. Autogestión server-side (POST /login + Basic); no hay callback OAuth"
     autoridad -> votar.panel.adminAuth "4. Login admin; cookies solo tras 2FA"
     votar.panel.adminAuth -> votar.api.apiRouter "5. Set-Cookie access+refresh SameSite=Strict; logout las limpia con los mismos atributos"
+  }
+
+  dynamic view google_oidc_votante_flow {
+    title "Inicio de sesión de votante con Google OIDC (VOTAR-523)"
+    description "Authorization Code con state+nonce; el callback se publica bajo el origen frontend y la cookie efímera de estado va cifrada y autenticada."
+
+    votante -> votar.bud.auth "1. Elige Continuar con Google"
+    votar.bud.auth -> vercelEdge "2. GET /auth/votante/google?idEleccion"
+    vercelEdge -> votar.api.googleOidcService "3. Proxy same-origin"
+    votar.api.googleOidcService -> googleIdentity "4. Redirect authorization con state+nonce; Set-Cookie state AES-256-GCM, 5 min"
+    googleIdentity -> vercelEdge "5. Callback con code+state"
+    vercelEdge -> votar.api.googleOidcService "6. Rewrite callback al backend"
+    votar.api.googleOidcService -> googleIdentity "7. Intercambia code y obtiene JWKS"
+    votar.api.googleOidcService -> votar.api.dataAccess "8. Verifica email_verified y pertenencia al padrón"
+    votar.api.googleOidcService -> votar.bud.auth "9. Set-Cookie voter access HttpOnly/Secure/SameSite=Strict; limpia state"
+  }
+
+  dynamic view dashboard_actualizado_flow {
+    title "Actualización integral del Dashboard (VOTAR-518)"
+    description "El aviso sin conteos evita filtrar resultados ocultos y refresca todas las vistas públicas ante un cambio on-chain."
+
+    votar.api.rpcFailover -> votar.contracts.auditViewContract "1. Poll de escrutinio cada 4s"
+    votar.contracts.auditViewContract -> votar.api.dashboardGateway "2. Snapshot cambió"
+    votar.api.dashboardGateway -> votar.dashboard.statsViewer "3. dashboard:actualizado en sala de avisos (siempre)"
+    votar.api.dashboardGateway -> votar.dashboard.statsViewer "4. resultados:actualizados sólo en sala autorizada"
+    votar.dashboard.statsViewer -> votar.api.apiRouter "5. Invalida/refetch de participación, revoto, transacciones, estado y resultados visibles"
+  }
+
+  dynamic view despliegue_vercel_vps_flow {
+    title "Despliegue web Vercel y backend VPS (VOTAR-516/521)"
+    description "La SPA mantiene cookies same-site mediante rewrites; el backend puede ejecutarse serverless o en VPS on-demand con apagado automático."
+
+    votante -> vercelEdge "1. HTTPS SPA"
+    vercelEdge -> votar.api.apiRouter "2. /api/* y callback OAuth por proxy"
+    backendVps -> votar.api.apiRouter "3. nginx → systemd votar-back"
+    votar.api.apiRouter -> votar.db "4. PostgreSQL vía TLS"
+    backendVps -> autoridad "5. timer detecta inactividad post-comicio y apaga VPS"
+  }
+
+  dynamic view relayer_vault_flow {
+    title "Relayer de gas y vault de secretos (VOTAR-497)"
+    description "El cliente no tiene clave de gas. Autorización autenticada sin cuerpo de voto + broadcast anónimo; el contrato no exige un rol de relayer, msg.sender solo paga gas."
+
+    votar.api.vaultService -> secretsVault "0. hydrateSecretsFromVault, antes de NestFactory (producción rechaza SECRETS_VAULT_PROVIDER=env)"
+    votante -> votar.bud.blockchainClient "1. Confirma sufragio ya firmado (billetera efímera)"
+    votar.bud.blockchainClient -> votar.api.relayerService "2. POST /relayer/autorizacion (JWT votante, sin cuerpo de voto)"
+    votar.api.relayerService -> votar.api.dataAccess "3. INSERT token_hash=sha256(token), expira_en (sin votante_hash, nullifier ni selección)"
+    votar.api.relayerService -> votar.api.auditLogger "4. RELAYER_CAPACIDAD_EMITIDA (actor ofuscado)"
+    votar.api.relayerService -> votar.bud.blockchainClient "5. 200 { relayToken, expiresAt }"
+    votar.bud.blockchainClient -> votar.api.relayerService "6. POST /relayer/cast { relayToken, voto firmado } (credentials: omit)"
+    votar.api.relayerService -> votar.api.dataAccess "7. UPDATE consumida_en WHERE token_hash AND id_eleccion AND consumida_en IS NULL AND expira_en > now()"
+    votar.api.relayerService -> votar.api.merkleBuilder "8. obtenerProofVotante (proof de servidor, no la del cliente)"
+    votar.api.relayerService -> votar.api.vaultService "9. getSecret(RELAYER_PRIVATE_KEY)"
+    votar.api.relayerService -> rpc "10. castSignedVote (margen de gas 1.1)"
+    rpc -> votar.contracts.ballotContract "11. msg.sender = relayer (solo paga gas)"
+    votar.contracts.ballotContract -> votar.api.relayerService "12. txHash"
+    votar.api.relayerService -> votar.api.auditLogger "13. RELAYER_CAST_ENVIADO (ANONIMO; sin nullifier/selección/txHash)"
+    votar.api.relayerService -> votar.bud.blockchainClient "14. 200 { txHash }"
+    votar.bud.blockchainClient -> rpc "15. waitForTransactionReceipt (sin clave privada); si ya hay txHash, no rebroadcasta"
   }
 }

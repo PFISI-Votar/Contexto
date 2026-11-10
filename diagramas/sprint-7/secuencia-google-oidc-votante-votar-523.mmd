@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor V as Votante
+    participant F as Frontend BUD / Vercel
+    participant A as API Backend
+    participant G as Google Identity
+    participant DB as PostgreSQL
+
+    V->>F: Continuar con Google
+    F->>A: GET /auth/votante/google?idEleccion
+    A->>A: Verificar GOOGLE habilitado para el comicio
+    A->>A: Generar state + nonce y sellar cookie (AES-256-GCM, 5 min)
+    A-->>G: 302 /authorize (code, openid email profile)
+    G-->>F: Callback /auth/votante/google/callback?code&state
+    F->>A: Rewrite same-origin del callback + cookie state
+    A->>A: Validar state, vencimiento y nonce
+    A->>G: POST /token (authorization code)
+    G-->>A: id_token
+    A->>G: GET JWKS (cache 1 h)
+    A->>A: Validar firma, issuer, audience, nonce y email_verified
+    A->>DB: Verificar email contra padrón del comicio
+    alt Votante habilitado
+        A-->>F: Set-Cookie voter access HttpOnly/Secure/SameSite=Strict; limpiar state; 302 BUD
+        F-->>V: BUD autenticada
+    else Identidad inválida o fuera del padrón
+        A-->>F: Limpiar state; 302 BUD?googleAuth=error
+        F-->>V: Error de autenticación
+    end

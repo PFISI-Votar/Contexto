@@ -4,6 +4,11 @@
 %% UTN FRVM — Equipo 09 — Sprint 7
 %% ============================================================================
 %% Evolución Sprint 7:
+%% - Actualización de dev al 2026-11-09: GoogleOidcService implementa OAuth
+%%   Authorization Code + OIDC para votantes; EleccionGateway y
+%%   EscrutinioPollerService separan el aviso dashboard:actualizado de los
+%%   resultados protegidos; RpcResponseCache agrega caché finality-aware,
+%%   coalescencia y retries con backoff; ConfiguracionComicio suma el popup BUD.
 %% - VOTAR-487: cookies de sesión (autoridad y votante) con HttpOnly + Secure
 %%   en producción + SameSite=Strict. Sin nuevas clases de dominio: el atributo
 %%   es de la emisión/limpieza HTTP, no de una entidad. SSO Autogestión sigue
@@ -192,6 +197,9 @@ classDiagram
         -Integer duracionMinutos
         -MetodoAutenticacion[] metodosAutenticacion
         -PoliticaRevoto politicaRevoto
+        -boolean popupAlertaHabilitado
+        -String popupAlertaTitulo
+        -String popupAlertaDescripcion
         +definirMetodosAutenticacion(metodos MetodoAutenticacion[]) void
         +validarMetodosAutenticacion() boolean
         +validarConfiguracion() boolean
@@ -615,6 +623,43 @@ classDiagram
         <<servicio NestJS / viem>>
         +callWithFailover(method String, params Object) any
         +rotarProveedor(motivo String) void
+        +reintentarConBackoff(attempt int) void
+    }
+
+    class RpcResponseCache {
+        <<caché local JSON-RPC — VOTAR-515>>
+        +resolve(payload JsonRpcPayload, load Function) RpcItem
+        +rpcCacheTtlMs(payload JsonRpcPayload) int
+        -coalesceInflight(key String) Promise
+        -isFinalized(block int, head int) boolean
+    }
+
+    class GoogleOidcService {
+        <<servicio NestJS — VOTAR-523>>
+        +createAuthorizationRequest(idEleccion int) AuthorizationRequest
+        +authenticateCallback(code String, state String, cookie String) GoogleIdentity
+        -verifyIdToken(idToken String, nonce String) Claims
+        -sealState(state OAuthState) String
+    }
+
+    class EleccionGateway {
+        <<Socket.IO gateway>>
+        +handleDashboardSubscribe(idEleccion int) void
+        +emitResultadosActualizados(payload DTO) void
+        +emitDashboardActualizado(idEleccion int) void
+    }
+
+    class EscrutinioPollerService {
+        <<servicio NestJS — intervalo 4 s>>
+        +onModuleInit() void
+        +onModuleDestroy() void
+        -tick() void
+    }
+
+    class ServerMetricsMiddleware {
+        <<middleware NestJS — VOTAR-512>>
+        +use(req Request, res Response, next Function) void
+        -flushWindow() void
     }
 
     class FaucetService {
@@ -704,6 +749,10 @@ classDiagram
     Lista ..> ElectoralImageService : logoUrl (saveImage/deleteIfManagedUrl)
     ConfiguracionSistema ..> ElectoralImageService : logoUrl (saveImage/deleteIfManagedUrl)
     RpcFailoverService ..> ContratoBoleta : eth_call / sendTransaction
+    RpcFailoverService *-- RpcResponseCache : cachea lecturas seguras
+    GoogleOidcService ..> Votante : autentica y valida padrón
+    EscrutinioPollerService --> EleccionGateway : emite cambios detectados
+    EleccionGateway ..> ConfiguracionComicio : protege resultados según visibilidad
     FaucetService ..> RpcFailoverService : balance + transfer SepoliaETH
     BackupScheduler ..> BackupService : tick diario (BACKUP_HOUR)
 

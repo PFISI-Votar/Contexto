@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor O as Observador
+    participant F as Dashboard React
+    participant WS as EleccionGateway Socket.IO
+    participant P as EscrutinioPoller (4 s)
+    participant RPC as RPC Failover + Cache
+    participant C as AuditViewContract
+
+    O->>F: Abre una vista pública del comicio
+    F->>WS: dashboard:subscribe(idEleccion)
+    WS->>WS: Unir sala aviso (siempre)
+    opt Resultados visibles por configuración
+        WS->>WS: Unir sala de resultados
+    end
+    loop Cada 4 segundos
+        P->>RPC: Consultar snapshot on-chain
+        RPC->>C: eth_call
+        C-->>P: Participación y tallies
+        alt Snapshot cambió
+            P->>WS: emitDashboardActualizado(idEleccion)
+            WS-->>F: dashboard:actualizado (sin conteos)
+            P->>WS: emitResultadosActualizados(snapshot)
+            WS-->>F: resultados:actualizados (sólo sala autorizada)
+            F->>F: Invalidar queries públicas y refetch
+            F-->>O: Vistas actualizadas
+        end
+    end

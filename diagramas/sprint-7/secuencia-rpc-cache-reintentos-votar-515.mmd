@@ -1,0 +1,32 @@
+sequenceDiagram
+    autonumber
+    participant S as Servicio Backend
+    participant R as FailoverJsonRpcProvider
+    participant C as RpcResponseCache
+    participant A as RPC primario
+    participant B as RPC respaldo
+
+    S->>R: JSON-RPC(method, params)
+    R->>C: resolve(payload)
+    alt Hit válido o request idéntico en vuelo
+        C-->>R: Respuesta cacheada/coalescida
+        R-->>S: Resultado con id JSON-RPC original
+    else Miss
+        R->>A: Request con timeout
+        alt 429, timeout o error de red
+            R->>B: Verificar block skew y rotar
+            alt Respaldo disponible
+                B-->>R: Respuesta
+            else Ronda completa agotada
+                R->>R: Esperar backoff exponencial + jitter
+                R->>A: Nueva ronda hasta maxRetries
+                A-->>R: Respuesta o error final
+            end
+        else Respuesta exitosa
+            A-->>R: Respuesta
+        end
+        R->>C: Guardar sólo lectura segura
+        Note over C: Bloques near-head usan TTL corto; sólo finalizados son inmutables
+        C-->>R: Resultado
+        R-->>S: Resultado
+    end

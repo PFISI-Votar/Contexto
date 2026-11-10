@@ -6,6 +6,11 @@
 %% Capa de persistencia: PostgreSQL 16 (off-chain)
 %% Referencia on-chain: Ethereum Sepolia (Smart Contracts)
 %% Evolución Sprint 7:
+%% - Actualización de dev al 2026-11-09: CONFIGURACION_COMICIO incorpora el
+%%   popup de advertencia previo a la BUD (habilitado, título y descripción) y
+%%   PADRON_ELECTORAL explicita criterio_hash (DNI | EMAIL). Google OAuth/OIDC,
+%%   WebSocket, caché RPC, métricas y despliegue no agregan entidades: son
+%%   comportamiento de aplicación/infraestructura y se documentan en C4.
 %% - VOTAR-487: cookies de sesión (SameSite=Strict, HttpOnly, Secure en
 %%   producción) no se persisten. No hay columna ni entidad nueva: el atributo
 %%   viaja en Set-Cookie. REFRESH_SESSION (VOTAR-492) guarda el hash del refresh,
@@ -80,6 +85,9 @@ erDiagram
         boolean mostrar_dashboard_participacion "VOTAR-459: solapa Participación visible mientras el comicio está en curso (default true)"
         boolean mostrar_dashboard_revoto "VOTAR-459: solapa Re-voto visible mientras el comicio está en curso (default true)"
         boolean mostrar_dashboard_transacciones "VOTAR-459: solapa Transacciones visible mientras el comicio está en curso (default true)"
+        boolean popup_alerta_habilitado "VOTAR-524: muestra una advertencia obligatoria antes de iniciar el wizard de la BUD (default false)"
+        string popup_alerta_titulo "VOTAR-524: título opcional del popup; nullable cuando está deshabilitado"
+        string popup_alerta_descripcion "VOTAR-524: cuerpo opcional del popup; nullable cuando está deshabilitado"
     }
 
     %% ═══════════════════════════════════════════════════════════════════════
@@ -163,6 +171,7 @@ erDiagram
         datetime fecha_generacion "Fecha de generación/importación"
         string hash_padron "Raíz Merkle Keccak-256 del padrón (64 hex, sin 0x). Sello de integridad (VOTAR-334)"
         string estado "BORRADOR | PUBLICADO | CERRADO"
+        string criterio_hash "DNI | EMAIL — columna usada para construir la hoja anónima; default DNI"
         int total_procesados "US-331: filas de datos leídas del CSV"
         int total_omitidos "US-331: filas omitidas (defectuosas o duplicadas)"
         jsonb novedades "US-331: reporte de novedades [linea, tipo, motivo] sin PII (Ley 25.326)"
